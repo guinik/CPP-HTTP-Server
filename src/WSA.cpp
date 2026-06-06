@@ -1,5 +1,6 @@
 #include "WSA.hpp"
 #include <iostream>
+#include <thread>
 
 void WSAHandler::run() {
 	struct addrinfo hints;
@@ -23,22 +24,13 @@ void WSAHandler::run() {
 	while (true) {
 		SocketGuard client = SafeListenSocket.acceptSocket();
 
-		client.sendData("Hello!\n");
+		// CLIENT has reached the port TCP connection ready lets pass it to detached void
+		std::thread([c = std::move(client)]() mutable {
+			HandleConnection(std::move(c));
+			}
+		).detach();
+		
 
-		char buffer[512];
-
-		while (true) {
-			int bytes = client.recvData(buffer, sizeof(buffer));
-
-			if (bytes <= 0) break;
-
-			buffer[bytes] = '\0';
-
-			std::cout << "Client: " << buffer << std::endl;
-
-			client.sendData(buffer); // echo
-		}
 	}
 
 }
-

@@ -1,10 +1,11 @@
-
+#pragma once
 #include<winsock2.h>
 #include <ws2tcpip.h>
 #include <stdexcept>
 #include <format>
 #include "SocketGuard.hpp"
 #include "AddrInfo.hpp"
+#include "HandleConnection.hpp"
 
 class WSAHandlerBaseError : public std::runtime_error {
 public:
