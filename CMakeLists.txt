@@ -13,6 +13,7 @@ add_executable(HTTPSERVER
 	src/HandleConnection.cpp
 	src/HTTPRequest.cpp
 	src/Router.cpp
+	src/UserRoutes.cpp
 	include/WSA.hpp
     include/SocketGuard.hpp
 	include/AddrInfo.hpp
@@ -20,6 +21,7 @@ add_executable(HTTPSERVER
 	include/HTTPRequest.hpp
 	include/Router.hpp
 	include/HTTPResponse.hpp
+	include/UserRoutes.hpp
 )
 target_include_directories(HTTPSERVER PRIVATE include)
 
