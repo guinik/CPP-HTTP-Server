@@ -12,11 +12,14 @@ add_executable(HTTPSERVER
     src/SocketGuard.cpp
 	src/HandleConnection.cpp
 	src/HTTPRequest.cpp
+	src/Router.cpp
 	include/WSA.hpp
     include/SocketGuard.hpp
 	include/AddrInfo.hpp
 	include/HandleConnection.hpp
 	include/HTTPRequest.hpp
+	include/Router.hpp
+	include/HTTPResponse.hpp
 )
 target_include_directories(HTTPSERVER PRIVATE include)
 

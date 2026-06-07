@@ -6,6 +6,7 @@
 #include "SocketGuard.hpp"
 #include "AddrInfo.hpp"
 #include "HandleConnection.hpp"
+#include "Router.hpp"
 
 class WSAHandlerBaseError : public std::runtime_error {
 public:
@@ -71,9 +72,10 @@ private:
 
 class WSAHandler {
 public:
-	WSAHandler(const std::string& PORT) : _PORT(PORT) {};
+	WSAHandler(const std::string& PORT, RadixTree& router) : _PORT(PORT), _router(router) {};
 	void run();
 private:
 	WinSocketGuard _winSocketInitializer;
 	std::string _PORT;
+	RadixTree& _router;
 };

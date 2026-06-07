@@ -25,8 +25,8 @@ void WSAHandler::run() {
 		SocketGuard client = SafeListenSocket.acceptSocket();
 
 		// CLIENT has reached the port TCP connection ready lets pass it to detached void
-		std::thread([c = std::move(client)]() mutable {
-			HandleConnection(std::move(c));
+		std::thread([c = std::move(client), this]() mutable {
+			HandleConnection(std::move(c), _router);
 			}
 		).detach();
 		

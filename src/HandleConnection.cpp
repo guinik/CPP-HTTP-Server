@@ -16,14 +16,31 @@ void PrintRequest(const HTTPRequest& req) {
 	std::cout << "====================\n";
 }
 
-void HandleConnection(SocketGuard socket) {
+void HandleConnection(SocketGuard socket, RadixTree& router) {
 
 	std::string requestBytes = ReadRequest(socket);
 
 	HTTPRequest request = parseRawBytesRequest(requestBytes);
 
-
 	PrintRequest(request);
+
+	std::optional<Handler> handler = router.match(request);
+	HTTPResponse response;
+	if(handler.has_value())
+	{
+		response = handler.value()(request);
+	}
+	else
+	{
+		response.code = "404";
+		response.version = "HTTP/1.1";
+		response.reason = "Path not found";
+	}
+
+	std::string rawResponse = HTTPResponseToRawString(response);
+	socket.sendData(rawResponse);
+
+
 }
 
 std::string ReadRequest(SocketGuard& socket) {
@@ -49,3 +66,17 @@ std::string ReadRequest(SocketGuard& socket) {
 	}
 	return buffer;
 }
+
+std::string HTTPResponseToRawString(HTTPResponse& response) 
+{
+	std::string rawString = response.version + " " + response.code + " " + response.reason + "\r\n";
+	for(auto& [key,val] : response.headers)
+	{
+		rawString += key + ": " + val + "\r\n";
+	}
+	rawString += "\r\n";
+	rawString += response.body;
+
+	return rawString;
+};
+
