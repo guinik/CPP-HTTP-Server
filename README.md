@@ -102,3 +102,14 @@ curl http://localhost:2700/unknown
 ## Platform
 
 Windows only — uses WinSock2 (`ws2_32`). No external dependencies beyond the Windows SDK.
+
+## Known Limitations
+
+This is a learning project — the following are known gaps, not bugs to fix right now:
+
+- **No `Content-Length` handling** — the recv loop stops at `\r\n\r\n` (end of headers) and does not read the body based on `Content-Length`. POST requests with large bodies will be truncated.
+- **No keep-alive** — each connection is handled once and closed. HTTP/1.1 persistent connections are not supported.
+- **Detached threads with no limit** — each connection spawns a detached `std::thread` with no thread pool or cap. Under load this will exhaust system resources.
+- **Single param child per node** — the radix tree only supports one named parameter per path segment level (e.g. `/users/:id` works, but `/users/:id/posts/:postId` would need testing).
+- **No query string parsing** — `?key=value` parameters in the URL are not parsed and will be treated as part of the path.
+- **Windows only** — depends on WinSock2; not portable to Linux/macOS without replacing the networking layer.
