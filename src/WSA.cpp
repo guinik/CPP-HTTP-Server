@@ -20,15 +20,14 @@ void WSAHandler::run() {
 	SafeListenSocket.bindSocket(info->ai_addr, static_cast<int>(info->ai_addrlen));
 	SafeListenSocket.listenSocket();
 	printf("Server listening on port %s...\n", _PORT.c_str());
-
 	while (true) {
 		SocketGuard client = SafeListenSocket.acceptSocket();
-
 		// CLIENT has reached the port TCP connection ready lets pass it to detached void
-		std::thread([c = std::move(client), this]() mutable {
-			HandleConnection(std::move(c), _router);
+		_threadPool.enqueue(
+			[c = std::make_shared<SocketGuard>(std::move(client)), this]() mutable {
+				HandleConnection(std::move(*c), _router);
 			}
-		).detach();
+		);
 		
 
 	}

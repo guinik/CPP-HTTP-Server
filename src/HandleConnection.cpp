@@ -36,7 +36,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 	
 	
 	
-	PrintRequest(request);
+	//PrintRequest(request);
 	HTTPResponse response;
 	if(handler.has_value())
 	{

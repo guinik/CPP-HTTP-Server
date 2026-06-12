@@ -8,13 +8,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(HTTPSERVER
     src/main.cpp
-    src/WSA.cpp
+   	src/WSA.cpp
     src/SocketGuard.cpp
 	src/HandleConnection.cpp
 	src/HTTPRequest.cpp
 	src/Router.cpp
 	src/UserRoutes.cpp
+	src/ThreadPool.cpp
 	include/WSA.hpp
+	include/ThreadPool.hpp
     include/SocketGuard.hpp
 	include/AddrInfo.hpp
 	include/HandleConnection.hpp

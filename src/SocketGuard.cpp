@@ -5,13 +5,28 @@ void SocketGuard::sendData(const std::string& data) {
 		throw std::runtime_error("Cannot send on invalid socket");
 	}
 
-	int result = send(_socket, data.c_str(), static_cast<int>(data.size()), 0);
 
-	if (result == SOCKET_ERROR) {
-		throw std::runtime_error(
-			std::format("Send failed: {}", WSAGetLastError())
-		);
-	}
+	size_t totalSent{ 0 };
+
+	while ( totalSent < data.size())
+	{
+		int result = send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
+
+		if (result == SOCKET_ERROR) {
+
+			int err = WSAGetLastError();
+			if (err == WSAECONNRESET || err == WSAECONNABORTED) {
+				return; // client disconnected mid-send, not fatal
+			}
+
+			throw std::runtime_error(
+				std::format("Send failed: {}", WSAGetLastError())
+			);
+		}
+
+
+		totalSent += result;
+	}	
 }
 
 void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {

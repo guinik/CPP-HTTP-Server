@@ -1,16 +1,22 @@
 #include "WSA.hpp"
 #include "Router.hpp"
 #include "UserRoutes.hpp"
+#include "ThreadPool.hpp"
+#include <thread>
 #include <string>
 #include <iostream>
 
 int main() {
     try {
         RadixTree router;
-
         addUserRoutes(router);
 
-        WSAHandler server("2700", router);
+
+        ThreadPool threadPool(std::thread::hardware_concurrency());
+
+        std::cout << "Creating server with : " << std::thread::hardware_concurrency() << " threads. \n";
+
+        WSAHandler server("2700", router, threadPool);
         server.run();   // all logic inside
     }
     catch (const std::exception& e) {
