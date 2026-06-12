@@ -3,7 +3,7 @@
 #include <memory>
 #include "HTTPRequest.hpp"
 
-void RadixTree::add(const std::string& path, const std::string& method, const Handler& handler)
+void RadixTree::add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler)
 {
 	// first we will split by / 
 	std::vector<std::string> splittedVector = splitByDelimiter(path, "/");
@@ -42,11 +42,15 @@ void RadixTree::add(const std::string& path, const std::string& method, const Ha
 
 	};
 	
-	currentNodePtr->handler = std::optional<Handler>(handler);
+
+	currentNodePtr->route =Route{
+								.middleware = middleware,
+								.handler = handler
+							};
 
 };
 
-std::optional<Handler> RadixTree::match(HTTPRequest& requestWithBody) {
+std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 
 	auto& requestHead = requestWithBody.head;
 	if (!methodsRoot.count(requestHead.method)) {
@@ -77,5 +81,30 @@ std::optional<Handler> RadixTree::match(HTTPRequest& requestWithBody) {
 		return std::nullopt;
 	}
 
-	return currentNodePtr->handler;
+	return currentNodePtr->route;
 };
+
+
+
+
+void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler)
+{
+	std::function<void()> chain = [](){};
+
+	for (int i = middlewareVector.size() - 1; i >= 0; --i) {
+
+		auto next = chain;
+		auto& currentFunction = middlewareVector[i];
+
+		chain = [&currentFunction, &request, &response, next]() {
+			currentFunction(request, response, next);
+		};
+	};
+
+	chain();
+	if (response.code.empty()) {
+		handler(request, response);
+	}
+
+
+}

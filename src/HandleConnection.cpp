@@ -12,7 +12,7 @@ void PrintRequest(const HTTPRequest& requestWBody) {
 	}
 
 	std::cout << "\n--- BODY ---\n";
-	std::cout << requestWBody.body << "\n";
+	std::cout << requestWBody.body.raw << "\n";
 
 	std::cout << "====================\n";
 }
@@ -27,20 +27,31 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 	{
 		bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
 	}
+
 	std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
-	HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes);
+	
+	auto it = head.headers.find("Content-Type");
+	std::string contentType = "";
+	if(it != head.headers.end())
+	{
+		contentType = it->second;
+	}
+
+
+
+	HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes, contentType);
 
 	HTTPRequest request = constructRequest(head, body);
 
-	std::optional<Handler> handler = router.match(request);
+	std::optional<Route> route = router.match(request);
 	
 	
 	
 	//PrintRequest(request);
 	HTTPResponse response;
-	if(handler.has_value())
+	if(route.has_value())
 	{
-		response = handler.value()(request);
+		applyRoute(route.value().middleware, request, response, route.value().handler);
 	}
 	else
 	{
@@ -114,6 +125,9 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 
 std::string HTTPResponseToRawString(HTTPResponse& response) 
 {
+	if (!response.body.empty()) {
+		response.headers["Content-Length"] = std::to_string(response.body.size());
+	}
 	std::string rawString = response.version + " " + response.code + " " + response.reason + "\r\n";
 	for(auto& [key,val] : response.headers)
 	{

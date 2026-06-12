@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
+#include "json.hpp"
 
 
 struct HTTPHead {
@@ -11,13 +12,18 @@ struct HTTPHead {
 	std::unordered_map<std::string, std::string> headers;
 	std::unordered_map<std::string, std::string> params;
 };
+struct HTTPBody
+{
+	std::string raw;
+	std::string contentType;
+	nlohmann::json json;
+};
 
 struct HTTPRequest {
 	HTTPHead head;
-	std::string body;
+	HTTPBody body;
 };
 
-using HTTPBody = std::string;
 //struct HTTPRequest {
 //	std::string method;
 //	std::string path;
@@ -29,7 +35,7 @@ using HTTPBody = std::string;
 //	std::string body;
 //};
 HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest);
-HTTPBody parseRawBytesBodyRequest(const std::string& rawRequest);
+HTTPBody parseRawBytesBodyRequest(const std::string& rawRequest, const std::string& contentType);
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body);
 
 std::vector<std::string> splitByDelimiter(const std::string& string, const std::string& delimiter);

@@ -67,8 +67,13 @@ HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
 	};
 };
 
-HTTPBody parseRawBytesBodyRequest(const std::string& rawBody) {
-	return rawBody;
+HTTPBody parseRawBytesBodyRequest(const std::string& rawBody, const std::string& contentType ) {
+
+
+	return HTTPBody{
+			.raw = rawBody,
+			.contentType = contentType
+	};
 };
 
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body) 
