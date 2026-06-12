@@ -46,13 +46,15 @@ void RadixTree::add(const std::string& path, const std::string& method, const Ha
 
 };
 
-std::optional<Handler> RadixTree::match(HTTPRequest& request) {
-	if (!methodsRoot.count(request.method)) {
+std::optional<Handler> RadixTree::match(HTTPRequest& requestWithBody) {
+
+	auto& requestHead = requestWithBody.head;
+	if (!methodsRoot.count(requestHead.method)) {
 		return std::nullopt;
 	};
-	RadixTreeNode* currentNodePtr = methodsRoot[request.method].get();
+	RadixTreeNode* currentNodePtr = methodsRoot[requestHead.method].get();
 
-	std::vector<std::string> splittedPath = splitByDelimiter(request.path, "/");
+	std::vector<std::string> splittedPath = splitByDelimiter(requestHead.path, "/");
 
 	for (size_t i = 0; i < splittedPath.size(); i++)
 	{
@@ -67,7 +69,7 @@ std::optional<Handler> RadixTree::match(HTTPRequest& request) {
 		if (currentNodePtr->paramChild)
 		{
 			currentNodePtr = currentNodePtr->paramChild.get();
-			request.params[currentNodePtr->paramName] = currentString;
+			requestHead.params[currentNodePtr->paramName] = currentString;
 			continue;
 
 		}

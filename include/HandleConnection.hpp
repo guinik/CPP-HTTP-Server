@@ -4,5 +4,6 @@
 #include "HTTPRequest.hpp"
 #include "Router.hpp"
 void HandleConnection(SocketGuard socket, RadixTree& router);
-std::string ReadRequest(SocketGuard& socket);
+std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket);
+std::string ReadRequestBody(SocketGuard& socket, size_t body, std::string& leftover);
 std::string HTTPResponseToRawString(HTTPResponse& response);

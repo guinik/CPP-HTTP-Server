@@ -6,7 +6,7 @@ void addUserRoutes(RadixTree& router)
     router.add("/users", "GET", [](const HTTPRequest& req) -> HTTPResponse {
         HTTPResponse response;
         response.code = "200";
-        response.body = "hellooooo";
+        response.body = req.body;
         response.version = "HTTP/1.1";
         response.reason = "All good";
         return response;
@@ -17,10 +17,8 @@ void addUserRoutes(RadixTree& router)
         response.version = "HTTP/1.1";
         response.code = "200";
         response.reason = "OK";
-        response.body = "user id is: " + req.params.at("id");
+        response.body = "user id is: " + req.head.params.at("id");
         return response;
         });
-
-
 
 };

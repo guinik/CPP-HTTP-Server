@@ -18,59 +18,63 @@ std::vector<std::string> splitByDelimiter(const std::string& string, const std::
 }
 
 
-HTTPRequest parseRawBytesRequest(const std::string& rawRequest) {
-	 auto pos = rawRequest.find("\r\n");
+HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
+	auto pos = rawRequest.find("\r\n");
 
-	 std::string firstLine = rawRequest.substr(0, pos);
-	 std::vector<std::string> firstLineVector = splitByDelimiter(firstLine, " ");
+	std::string firstLine = rawRequest.substr(0, pos);
+	std::vector<std::string> firstLineVector = splitByDelimiter(firstLine, " ");
 
-	 if (firstLineVector.size() != 3) {
-		 throw std::runtime_error("First Line parsing is not consistent");
-	 }
-
-
-	 size_t lastPos = pos + 2;
-	 size_t newPos;
-	 std::unordered_map<std::string, std::string> headerMap;
-
-	 while ((newPos = rawRequest.find("\r\n", lastPos)) != std::string::npos) {
-
-		 auto newLine = rawRequest.substr(lastPos, newPos - lastPos);
-		 if (newLine.empty()) {
-			 lastPos = lastPos + 2;
-			 break;
-		 }
-		 
-
-		 size_t colonPosition = newLine.find(":");
-		 if (colonPosition == std::string::npos) {
-			 throw std::runtime_error("Malformed header");
-		 }
-		 std::string key = newLine.substr(0, colonPosition);
-		 std::string value = newLine.substr( colonPosition + 1, newLine.length() - (colonPosition + 1));
-		 size_t start = value.find_first_not_of(" ");
-		 if (start != std::string::npos)
-			 value = value.substr(start);
-		 else
-			 value = "";
+	if (firstLineVector.size() != 3) {
+		throw std::runtime_error("First Line parsing is not consistent");
+	}
 
 
-		 headerMap[key] = value;
-		 lastPos = newPos + 2;
-	 }
-	 
-	 // now just handle the body
-	 std::string body = rawRequest.substr(lastPos, rawRequest.length() - lastPos);
+	size_t lastPos = pos + 2;
+	size_t newPos;
+	std::unordered_map<std::string, std::string> headerMap;
 
-	 return HTTPRequest{
+	while ((newPos = rawRequest.find("\r\n", lastPos)) != std::string::npos) {
+
+		auto newLine = rawRequest.substr(lastPos, newPos - lastPos);
+		if (newLine.empty()) {
+			lastPos = lastPos + 2;
+			break;
+		}
+
+
+		size_t colonPosition = newLine.find(":");
+		if (colonPosition == std::string::npos) {
+			throw std::runtime_error("Malformed header");
+		}
+		std::string key = newLine.substr(0, colonPosition);
+		std::string value = newLine.substr(colonPosition + 1, newLine.length() - (colonPosition + 1));
+		size_t start = value.find_first_not_of(" ");
+		if (start != std::string::npos)
+			value = value.substr(start);
+		else
+			value = "";
+
+
+		headerMap[key] = value;
+		lastPos = newPos + 2;
+	}
+
+	return HTTPHead{
 		 .method = firstLineVector[0],
 		 .path = firstLineVector[1],
 		 .version = firstLineVector[2],
 		 .headers = headerMap,
-		 .body = body
-	 };
-
-
-
+	};
 };
 
+HTTPBody parseRawBytesBodyRequest(const std::string& rawBody) {
+	return rawBody;
+};
+
+HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body) 
+{
+	return HTTPRequest{
+		.head = head,
+		.body = body
+	};
+};
