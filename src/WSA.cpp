@@ -2,6 +2,7 @@
 #include <iostream>
 #include <thread>
 
+
 void WSAHandler::run() {
 	struct addrinfo hints;
 	ZeroMemory(&hints, sizeof(hints));
@@ -18,19 +19,22 @@ void WSAHandler::run() {
 	SocketGuard SafeListenSocket = SocketGuard();
 	SafeListenSocket.createSocket(info->ai_family, info->ai_socktype, info->ai_protocol);
 	SafeListenSocket.bindSocket(info->ai_addr, static_cast<int>(info->ai_addrlen));
+	int secondsForTimeout{ 1 };
 	SafeListenSocket.listenSocket();
+	SafeListenSocket.setTimeout(secondsForTimeout);
 	printf("Server listening on port %s...\n", _PORT.c_str());
-	while (true) {
+	while (_running) {
 		SocketGuard client = SafeListenSocket.acceptSocket();
-
-		// CLIENT has reached the port TCP connection ready lets pass it to detached void
-		_threadPool.enqueue(
-			[c = std::make_shared<SocketGuard>(std::move(client)), this]() mutable {
-				HandleConnection(std::move(*c), _router);
-			}
-		);
-		
-
+		if(client.isValid())
+		{
+			// CLIENT has reached the port TCP connection ready lets pass it to detached void
+			_threadPool.enqueue(
+				[c = std::make_shared<SocketGuard>(std::move(client)), this]() mutable {
+					HandleConnection(std::move(*c), _router);
+				}
+			);
+		}
 	}
+	std::cout << "Closed server." << std::endl;
 
 }

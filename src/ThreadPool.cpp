@@ -38,7 +38,7 @@ ThreadPool::~ThreadPool() {
 
 	{
 		std::unique_lock lock(queueMtx);
-		stop = false;
+		stop = true;
 	}
 	cv.notify_all();
 	for( auto& t: threads)

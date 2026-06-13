@@ -37,6 +37,7 @@ public:
 	void bindSocket(const sockaddr* addrName, int addrLength);
 	void listenSocket();
 	void setTimeout(size_t seconds);
+	bool isValid();
 	SocketGuard acceptSocket();
 	void sendData(const std::string& data);
 	int recvData(char* buffer, int size);

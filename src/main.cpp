@@ -5,8 +5,17 @@
 #include <thread>
 #include <string>
 #include <iostream>
+#include <csignal>
 
+static std::atomic_bool g_running{ true };
+
+void handleShutdown(int) 
+{
+    g_running = false;
+
+}
 int main() {
+    std::signal(SIGINT, handleShutdown);
     try {
         RadixTree router;
         addUserRoutes(router);
@@ -16,7 +25,7 @@ int main() {
 
         std::cout << "Creating server with : " << std::thread::hardware_concurrency() << " threads. \n";
 
-        WSAHandler server("2700", router, threadPool);
+        WSAHandler server("2700", router, threadPool, g_running);
         server.run();   // all logic inside
     }
     catch (const std::exception& e) {

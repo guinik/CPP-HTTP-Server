@@ -73,11 +73,14 @@ private:
 
 class WSAHandler {
 public:
-	WSAHandler(const std::string& PORT, RadixTree& router, ThreadPool& threadPool) : _PORT(PORT), _router(router), _threadPool(threadPool) {};
+	WSAHandler(const std::string& PORT, RadixTree& router, ThreadPool& threadPool, std::atomic_bool&  running) : _PORT(PORT),
+		_router(router), _threadPool(threadPool), _running(running) {};
 	void run();
+
 private:
 	WinSocketGuard _winSocketInitializer;
 	std::string _PORT;
 	RadixTree& _router;
 	ThreadPool& _threadPool;
+	std::atomic_bool& _running;
 };

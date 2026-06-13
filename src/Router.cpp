@@ -3,6 +3,32 @@
 #include <memory>
 #include "HTTPRequest.hpp"
 
+std::string stringDecode(std::string input)
+{
+	std::string result;
+	for(size_t i{}; i < input.size(); i++)
+	{
+		// if coded it will have he form %AA 
+		if (input[i] == '%' && i + 2 > input.size())
+		{
+			int hexValue = std::stoi(input.substr(i + 1, 2), nullptr, 16);
+			char characterValue = static_cast<char>(hexValue);
+			result += characterValue;
+			i += 2;
+		}
+		else if(input[i] == '+')
+		{
+			result += ' ';
+		}
+		else 
+		{
+			result += input[i];
+		}
+	}	
+	return result;
+};
+
+
 void RadixTree::add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler)
 {
 	// first we will split by / 
@@ -50,8 +76,7 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 
 };
 
-std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
-	// /users?id=100/... 
+std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) { 
 	auto& requestHead = requestWithBody.head;
 	if (!methodsRoot.count(requestHead.method)) {
 		return std::nullopt;
@@ -62,10 +87,11 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 
 	if(pathAndQueryVector.size() > 1)
 	{
-		std::vector<std::string> extraParams = splitByDelimiter(pathAndQueryVector[1], "&"); // id=100;
+		std::vector<std::string> extraParams = splitByDelimiter(pathAndQueryVector[1], "&"); // id=100, coudl have something like id=21%20a;
 		for(auto& param : extraParams)
 		{
-			std::vector<std::string> splitByEqual = splitByDelimiter(param, "=");
+			std::string decodedString = stringDecode(param);
+			std::vector<std::string> splitByEqual = splitByDelimiter(decodedString, "=");
 			requestHead.queryParams[splitByEqual[0]] = splitByEqual[1];
 		}
 	}
@@ -78,7 +104,7 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 	for (size_t i = 0; i < splittedPath.size(); i++)
 	{
 
-		std::string currentString = splittedPath[i];
+		std::string currentString = stringDecode(splittedPath[i]);
 
 
 		auto it = currentNodePtr->children.find(currentString);
@@ -123,6 +149,5 @@ void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& re
 	if (response.code.empty()) {
 		handler(request, response);
 	}
-
-
 }
+

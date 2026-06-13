@@ -1,5 +1,6 @@
 
 #include "SocketGuard.hpp"
+#include <iostream>
 void SocketGuard::sendData(const std::string& data) {
 	if (_socket == INVALID_SOCKET) {
 		throw std::runtime_error("Cannot send on invalid socket");
@@ -63,7 +64,7 @@ void SocketGuard::listenSocket() {
 
 void SocketGuard::setTimeout(size_t seconds)
 {
-	size_t msTime = seconds * 1000;
+	DWORD msTime = static_cast<DWORD>(seconds * 1000);
 	int iResult;
 	iResult = setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&msTime, sizeof(msTime) );
 	if (iResult == SOCKET_ERROR) {
@@ -77,8 +78,29 @@ SocketGuard SocketGuard::acceptSocket() {
 		throw std::runtime_error(std::format("Can not accept an invalid socket, have you created the Socket?"));
 	}
 
+	fd_set readSet;
+	FD_ZERO(&readSet);
+	FD_SET(_socket, &readSet);
+
+	timeval timeout{};
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+
+	int ready = select(0, &readSet, NULL, NULL, &timeout);
+
+	if (ready == 0)
+	{
+		return SocketGuard(INVALID_SOCKET);
+	}
+	if (ready == SOCKET_ERROR)
+	{
+		throw std::runtime_error("SELECT FAILED");
+	}
+
 	SOCKET clientSocket = accept(_socket, NULL, NULL);
+
 	if (clientSocket == INVALID_SOCKET) {
+		int error = WSAGetLastError();
 		throw std::runtime_error(std::format("Accept Failed : {}", WSAGetLastError()));
 	}
 	return SocketGuard(clientSocket);
@@ -108,3 +130,8 @@ int SocketGuard::recvData(char* buffer, int size) {
 
 	return bytes;
 }
+
+bool SocketGuard::isValid() 
+{
+	return _socket != INVALID_SOCKET;
+};
