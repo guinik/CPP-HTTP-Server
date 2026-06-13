@@ -25,6 +25,7 @@ add_executable(HTTPSERVER
 	include/HTTPResponse.hpp
 	include/UserRoutes.hpp
 	include/Utils.hpp
+	include/Cors.hpp
 )
 target_include_directories(HTTPSERVER PRIVATE include)
 

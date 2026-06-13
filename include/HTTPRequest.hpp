@@ -17,7 +17,7 @@ struct HTTPBody
 {
 	std::string raw;
 	std::string contentType;
-	nlohmann::json json;
+	nlohmann::json json = nlohmann::json::object();;
 };
 
 struct HTTPRequest {

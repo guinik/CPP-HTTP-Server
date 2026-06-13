@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 struct HTTPResponse {
-	std::string version;
+	std::string version = "HTTP/1.1";
 	std::string code;
 	std::string reason;
 	////
