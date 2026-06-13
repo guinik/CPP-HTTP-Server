@@ -61,6 +61,16 @@ void SocketGuard::listenSocket() {
 	}
 }
 
+void SocketGuard::setTimeout(size_t seconds)
+{
+	size_t msTime = seconds * 1000;
+	int iResult;
+	iResult = setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&msTime, sizeof(msTime) );
+	if (iResult == SOCKET_ERROR) {
+		throw std::runtime_error(std::format("Set Timeout Failed : {}", WSAGetLastError()));
+	}
+}
+
 
 SocketGuard SocketGuard::acceptSocket() {
 	if (_socket == INVALID_SOCKET) {

@@ -22,6 +22,8 @@ void WSAHandler::run() {
 	printf("Server listening on port %s...\n", _PORT.c_str());
 	while (true) {
 		SocketGuard client = SafeListenSocket.acceptSocket();
+		client.setTimeout(5);
+
 		// CLIENT has reached the port TCP connection ready lets pass it to detached void
 		_threadPool.enqueue(
 			[c = std::make_shared<SocketGuard>(std::move(client)), this]() mutable {
