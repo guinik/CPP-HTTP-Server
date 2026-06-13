@@ -18,52 +18,61 @@ void PrintRequest(const HTTPRequest& requestWBody) {
 }
 
 void HandleConnection(SocketGuard socket, RadixTree& router) {
+	size_t timeoutSeconds{ 5 };
+	socket.setTimeout(timeoutSeconds);
 
-	auto [requestBytes, leftover] = ReadRequestHead(socket);
-
-	HTTPHead head = parseRawBytesHeadRequest(requestBytes);
-	size_t bodyBytes{ 0 };
-	if (head.headers.count("Content-Length") != 0)
-	{
-		bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
-	}
-
-	std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
-	
-	auto it = head.headers.find("Content-Type");
-	std::string contentType = "";
-	if(it != head.headers.end())
-	{
-		contentType = it->second;
-	}
-
-
-
-	HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes, contentType);
-
-	HTTPRequest request = constructRequest(head, body);
-
-	std::optional<Route> route = router.match(request);
-	
-	
-	
-	//PrintRequest(request);
 	HTTPResponse response;
-	if(route.has_value())
-	{
-		applyRoute(route.value().middleware, request, response, route.value().handler);
+	try{
+		auto [requestBytes, leftover] = ReadRequestHead(socket);
+
+		HTTPHead head = parseRawBytesHeadRequest(requestBytes);
+		size_t bodyBytes{ 0 };
+		if (head.headers.count("Content-Length") != 0)
+		{
+			bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
+		}
+
+		std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
+	
+		auto it = head.headers.find("Content-Type");
+		std::string contentType = "";
+		if(it != head.headers.end())
+		{
+			contentType = it->second;
+		}
+
+
+
+		HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes, contentType);
+
+		HTTPRequest request = constructRequest(head, body);
+
+		std::optional<Route> route = router.match(request);
+	
+	
+	
+		//PrintRequest(request);
+		if(route.has_value())
+		{
+			applyRoute(route.value().middleware, request, response, route.value().handler);
+		}
+		else
+		{
+			response.code = "404";
+			response.version = "HTTP/1.1";
+			response.reason = "Path not found";
+		}
+
 	}
-	else
-	{
-		response.code = "404";
-		response.version = "HTTP/1.1";
-		response.reason = "Path not found";
+	catch (const std::exception& e) {
+		std::cerr << "Connection error: " << e.what() << "\n";
+		response.code = 500;
+		response.reason = "Server Error";
+
 	}
 
 	std::string rawResponse = HTTPResponseToRawString(response);
 	socket.sendData(rawResponse);
-
-
 }
 
 std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket) {
@@ -100,6 +109,11 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 	{
 		return "";
 	}
+
+	if (bodySize > 1024 * 1024 * 10) { // 10MB max
+		throw std::runtime_error("Body too large");
+	}
+
 	constexpr int bufferSize = 1024;
 	char temp[bufferSize];
 	std::string buffer = std::move(leftover);
