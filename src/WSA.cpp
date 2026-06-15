@@ -19,9 +19,7 @@ void WSAHandler::run() {
 	SocketGuard SafeListenSocket = SocketGuard();
 	SafeListenSocket.createSocket(info->ai_family, info->ai_socktype, info->ai_protocol);
 	SafeListenSocket.bindSocket(info->ai_addr, static_cast<int>(info->ai_addrlen));
-	int secondsForTimeout{ 1 };
 	SafeListenSocket.listenSocket();
-	SafeListenSocket.setTimeout(secondsForTimeout);
 	printf("Server listening on port %s...\n", _PORT.c_str());
 	while (_running) {
 		SocketGuard client = SafeListenSocket.acceptSocket();

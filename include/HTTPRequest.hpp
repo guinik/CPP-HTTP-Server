@@ -25,16 +25,6 @@ struct HTTPRequest {
 	HTTPBody body;
 };
 
-//struct HTTPRequest {
-//	std::string method;
-//	std::string path;
-//	std::string version;
-	////
-//	std::unordered_map<std::string, std::string> headers;
-//	std::unordered_map<std::string, std::string> params;
-	//for headers we might have way to many
-//	std::string body;
-//};
 HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest);
 HTTPBody parseRawBytesBodyRequest(const std::string& rawRequest, const std::string& contentType);
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body);

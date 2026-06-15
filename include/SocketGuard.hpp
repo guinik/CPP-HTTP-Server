@@ -1,9 +1,20 @@
 #pragma once
 #include<winsock2.h>
 #include <ws2tcpip.h>
-#include <stdexcept>
 #include <format>
+#include <stdexcept>
 
+class SocketBaseError : public std::runtime_error {
+public:
+	explicit SocketBaseError(const std::string& msg) : std::runtime_error(msg) {
+	}
+};
+
+class SocketDisconnectException : public SocketBaseError {
+public:
+	explicit SocketDisconnectException(const std::string& msg) : SocketBaseError(msg) {
+	}
+};
 class SocketGuard {
 public:
 	SocketGuard(SOCKET socket) : _socket(socket) {};

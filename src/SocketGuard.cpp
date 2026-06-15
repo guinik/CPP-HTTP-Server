@@ -117,15 +117,19 @@ int SocketGuard::recvData(char* buffer, int size) {
 	if (bytes == SOCKET_ERROR) {
 		
 		int err = WSAGetLastError();
-
-		if (err == WSAECONNRESET) {
-			return 0; // treat as disconnect, NOT fatal
+		if (err == WSAECONNRESET || err == WSAECONNABORTED || err == WSAESHUTDOWN || err == WSAETIMEDOUT) {
+			throw SocketDisconnectException(std::format("Client disconnected: {}", err));
 		}
 
-		throw std::runtime_error(
+		throw SocketBaseError(
 			std::format("Recv failed: {}", err)
 		);
 
+	}
+
+	if(bytes  == 0)
+	{
+		throw SocketDisconnectException(std::format("Client disconnected: No bytes recieved"));
 	}
 
 	return bytes;

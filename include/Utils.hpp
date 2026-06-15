@@ -11,7 +11,7 @@ MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 		next();
 		return;
 	}
-	if (req.head.headers["Content-Type"] != "application/json") 
+	if (req.head.headers.count("Content-Type") && req.head.headers["Content-Type"] != "application/json")
 	{
 		res.code = "415";
 		res.reason = "Unsported media no json";
