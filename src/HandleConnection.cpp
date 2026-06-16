@@ -200,12 +200,24 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 	return buffer;
 }
 
+void addTimeHeader(HTTPResponse& response)
+{
+	auto now = std::chrono::system_clock::now();
+	auto time = std::chrono::system_clock::to_time_t(now);
+	std::tm tm{};
+	gmtime_s(&tm, &time);
+	char buf[64];
+	std::strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+	response.headers["Date"] = buf;
+}
 
 std::string HTTPResponseToRawString(HTTPResponse& response) 
 {
+	addTimeHeader(response);
 	if (!response.body.empty()) {
 		response.headers["Content-Length"] = std::to_string(response.body.size());
 	}
+
 	std::string rawString = response.version + " " + response.code + " " + response.reason + "\r\n";
 	for(auto& [key,val] : response.headers)
 	{
@@ -213,6 +225,7 @@ std::string HTTPResponseToRawString(HTTPResponse& response)
 	}
 	rawString += "\r\n";
 	rawString += response.body;
+
 
 	return rawString;
 };

@@ -14,9 +14,15 @@ void handleShutdown(int)
     g_running = false;
 
 }
-int main() {
+int main(int argc, char* argv[]) {
     std::signal(SIGINT, handleShutdown);
     try {
+        std::string port = "2700";
+        if (argc > 1)
+        {
+            port = argv[1];
+        }
+
         RadixTree router;
         addUserRoutes(router);
 
@@ -25,7 +31,7 @@ int main() {
 
         std::cout << "Creating server with : " << std::thread::hardware_concurrency() << " threads. \n";
 
-        WSAHandler server("2700", router, threadPool, g_running);
+        WSAHandler server(port, router, threadPool, g_running);
         server.run();   // all logic inside
     }
     catch (const std::exception& e) {
