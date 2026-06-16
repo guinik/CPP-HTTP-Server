@@ -2,16 +2,36 @@
 #include <string>
 #include <unordered_map>
 #include "json.hpp"
+#include <algorithm>
+struct CaseInsensitiveHash 
+{
+	size_t operator()(const std::string& a) const{
+		std::string lower = a;
+		std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+		return std::hash<std::string>{}(lower);
+	}
+};
 
+struct CaseInsensitiveEqual	 
+{
+	bool operator()(const std::string& a, const std::string& b) const {
+		return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+			[](char ca, char cb) {
+				return std::tolower(ca) == std::tolower(cb);
+
+			});
+	};
+};
+using CaseInsensitiveMap = std::unordered_map<std::string, std::string, CaseInsensitiveHash, CaseInsensitiveEqual>;
 
 struct HTTPHead {
 	std::string method;
 	std::string path;
 	std::string version;
 	////
-	std::unordered_map<std::string, std::string> headers;
-	std::unordered_map<std::string, std::string> params;
-	std::unordered_map<std::string, std::string> queryParams;
+	CaseInsensitiveMap headers;
+	CaseInsensitiveMap params;
+	CaseInsensitiveMap queryParams;
 };
 struct HTTPBody
 {

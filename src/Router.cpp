@@ -87,7 +87,7 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 };
 
 
-void mergeParams(HTTPRequest& request, const std::unordered_map<std::string, std::string>& params)
+void mergeParams(HTTPRequest& request, const CaseInsensitiveMap& params)
 {
 	for (auto [key, value] : params)
 	{
@@ -98,8 +98,8 @@ void mergeParams(HTTPRequest& request, const std::unordered_map<std::string, std
 
 
 
-std::pair<RadixTreeNode*, std::unordered_map<std::string, std::string>> dfsFindMatch(RadixTreeNode* initialNode, const std::vector<std::string>& pathVector, const DFSMode& mode, size_t currentIndex,
-							std::unordered_map<std::string, std::string> paramMap)
+std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initialNode, const std::vector<std::string>& pathVector, const DFSMode& mode, size_t currentIndex,
+			CaseInsensitiveMap paramMap)
 {
 	if (currentIndex == pathVector.size())
 	{
@@ -211,7 +211,7 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 	std::vector<std::string> splittedPath = splitByDelimiter(fullPath, "/");
 
 	size_t initialIndex = 0;
-	std::unordered_map<std::string, std::string> emptyMap{};
+	CaseInsensitiveMap emptyMap{};
 	for (auto& mode : allModes)
 	{
 		auto [resultNodePtrDfs, paramResult] = dfsFindMatch(methodHeadPtr, splittedPath, mode, initialIndex, emptyMap);

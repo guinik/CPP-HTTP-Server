@@ -31,7 +31,7 @@ HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
 
 	size_t lastPos = pos + 2;
 	size_t newPos;
-	std::unordered_map<std::string, std::string> headerMap;
+	CaseInsensitiveMap headerMap;
 
 	while ((newPos = rawRequest.find("\r\n", lastPos)) != std::string::npos) {
 
