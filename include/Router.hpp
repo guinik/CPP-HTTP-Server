@@ -36,7 +36,7 @@ struct RadixTreeNode {
 	std::unique_ptr<RadixTreeNode> paramChild;
 	std::unique_ptr<RadixTreeNode> wildcardChild;
 	std::string paramName;
-	std::optional<Route> route;
+	std::unordered_map<std::string, Route> routeMap;
 
 };
 
@@ -44,8 +44,8 @@ struct RadixTreeNode {
 class RadixTree {
 public:
 	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware ,const Handler& handler); // "GET /users/:id" its our working idea
-	std::optional<Route> match(HTTPRequest& request);
-	std::unordered_map<std::string, std::unique_ptr<RadixTreeNode>> methodsRoot; //method to Root
+	RadixTreeNode* match(HTTPRequest& request);
+	std::unique_ptr<RadixTreeNode> methodsRoot; //method to Root
 
 };
 

@@ -34,11 +34,11 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 	// first we will split by / 
 	std::vector<std::string> splittedVector = splitByDelimiter(path, "/");
 
-	if (!methodsRoot.count(method)) {
-		methodsRoot[method] = std::make_unique<RadixTreeNode>();
+	if (!methodsRoot) {
+		methodsRoot = std::make_unique<RadixTreeNode>();
 	};
 
-	RadixTreeNode* currentNodePtr = methodsRoot[method].get();
+	RadixTreeNode* currentNodePtr = methodsRoot.get();
 
 	for (int i = 0; i < splittedVector.size(); i++)
 	{
@@ -78,12 +78,20 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 
 	};
 	
+	auto it = currentNodePtr->routeMap.find(method);
+	if (it != currentNodePtr->routeMap.end()) 
+	{
+		throw std::format("Already registered");
+	}
+	else 
+	{
 
-	currentNodePtr->route =Route{
-								.middleware = middleware,
-								.handler = handler
-							};
+		currentNodePtr->routeMap[method] = Route{
+									.middleware = middleware,
+									.handler = handler
+								};
 
+	}
 };
 
 
@@ -98,7 +106,8 @@ void mergeParams(HTTPRequest& request, const CaseInsensitiveMap& params)
 
 
 
-std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initialNode, const std::vector<std::string>& pathVector, const DFSMode& mode, size_t currentIndex,
+std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initialNode, 
+	const std::vector<std::string>& pathVector, const DFSMode& mode, size_t currentIndex,
 			CaseInsensitiveMap paramMap)
 {
 	if (currentIndex == pathVector.size())
@@ -146,7 +155,7 @@ std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initia
 			if (currentNode->wildcardChild)
 			{
 				std::string wildCardString;
-				for (size_t i = currentIndex; i < pathVector.size() - 1; i++)
+				for (size_t i = currentIndex; i < pathVector.size(); i++)
 				{
 					if (i > currentIndex)
 					{
@@ -154,7 +163,6 @@ std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initia
 					}
 					wildCardString += pathVector[i];
 				}
-				wildCardString += pathVector[ pathVector.size() - 1 ];
 				paramMap["*"] = wildCardString;
 				currentIndex = pathVector.size();
 				return { currentNode->wildcardChild.get(), paramMap };
@@ -172,7 +180,7 @@ std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initia
 	for (auto& mode : allModes)
 	{
 		auto [dfsResultPtr, paramResult] = dfsFindMatch(currentNode, pathVector, mode, currentIndex + 1, paramMap);
-		if (dfsResultPtr && dfsResultPtr->route.has_value())
+		if (dfsResultPtr)
 		{
 			return { dfsResultPtr, paramResult };
 		}
@@ -184,12 +192,12 @@ std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initia
 	
 };
 
-std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) { 
+RadixTreeNode* RadixTree::match(HTTPRequest& requestWithBody) {
 	auto& requestHead = requestWithBody.head;
-	if (!methodsRoot.count(requestHead.method)) {
-		return std::nullopt;
+	if (!methodsRoot) {
+		return nullptr;
 	};
-	RadixTreeNode* methodHeadPtr = methodsRoot[requestHead.method].get();
+	RadixTreeNode* methodHeadPtr = methodsRoot.get();
 
 	std::vector<std::string> pathAndQueryVector = splitByDelimiter(requestHead.path, "?");
 
@@ -215,18 +223,15 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 	for (auto& mode : allModes)
 	{
 		auto [resultNodePtrDfs, paramResult] = dfsFindMatch(methodHeadPtr, splittedPath, mode, initialIndex, emptyMap);
-		if (resultNodePtrDfs && resultNodePtrDfs->route.has_value())
+		if (resultNodePtrDfs)
 		{
 			mergeParams(requestWithBody, paramResult);
-			return resultNodePtrDfs->route;
-
+			return resultNodePtrDfs;
 		}
 
 	}
-	return std::nullopt;
+	return nullptr;
 	
-
-
 };
 
 

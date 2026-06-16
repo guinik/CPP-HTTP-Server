@@ -82,24 +82,37 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 
 			HTTPRequest request = constructRequest(head, body);
 
-			std::optional<Route> route = router.match(request);
-
-
-
-
-
+			RadixTreeNode* routePointer = router.match(request);
 			PrintRequest(request);
-			if (route.has_value())
+
+
+			if(routePointer)
 			{
-				applyRoute(route.value().middleware, request, response, route.value().handler);
+				// route finded but method not checked
+				auto it = routePointer->routeMap.find(request.head.method);
+
+
+				if (it != routePointer->routeMap.end())
+				{
+					// matched method
+					applyRoute(it->second.middleware, request, response, it->second.handler);
+				}
+				else
+				{
+					response.code = "405";
+					response.version = "HTTP/1.1";
+					response.reason = "Path not found";
+				}
+
+			
 			}
 			else
 			{
 				response.code = "404";
 				response.version = "HTTP/1.1";
 				response.reason = "Path not found";
+			
 			}
-
 			keepAlive = keepAliveMechanism(request, response);
 
 		}
