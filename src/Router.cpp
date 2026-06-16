@@ -54,6 +54,16 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 			currentNodePtr = currentNodePtr -> paramChild.get();
 			continue;
 		}
+		else if(currStr[0] == '*') 
+		{
+			if (!currentNodePtr->wildcardChild) 
+			{
+				currentNodePtr->wildcardChild = std::make_unique<RadixTreeNode>();
+			}
+			currentNodePtr = currentNodePtr->wildcardChild.get();
+			continue;
+		
+		}
 		
 		auto it = currentNodePtr->children.find(currStr);
 		if(it != currentNodePtr->children.end())
@@ -76,12 +86,106 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 
 };
 
+
+void mergeParams(HTTPRequest& request, const std::unordered_map<std::string, std::string>& params)
+{
+	for (auto [key, value] : params)
+	{
+		request.head.params[key] = value;
+	}
+}
+
+
+
+
+std::pair<RadixTreeNode*, std::unordered_map<std::string, std::string>> dfsFindMatch(RadixTreeNode* initialNode, const std::vector<std::string>& pathVector, const DFSMode& mode, size_t currentIndex,
+							std::unordered_map<std::string, std::string> paramMap)
+{
+	if (currentIndex == pathVector.size())
+	{
+		return { initialNode, paramMap };
+	};
+	RadixTreeNode* currentNode = initialNode;
+	switch (mode)
+	{
+		case DFSMode::DIRECT:
+		{
+
+			auto it = currentNode->children.find(pathVector[currentIndex]);
+
+			if (it != currentNode->children.end())
+			{
+				currentNode = it->second.get();
+
+			}
+			else
+			{
+				return { nullptr, paramMap };
+			}
+			break;
+		}
+
+		case DFSMode::PARAM:
+
+			if (currentNode->paramChild)
+			{
+				currentNode = currentNode->paramChild.get();
+				paramMap[currentNode->paramName] = pathVector[currentIndex];
+			}
+			else 
+			{
+				return { nullptr, paramMap };
+			}
+
+
+			break;
+
+		case DFSMode::WILDCARD:
+		{
+
+			if (currentNode->wildcardChild)
+			{
+				std::string wildCardString;
+				for (size_t i = currentIndex; i < pathVector.size() - 1; i++)
+				{
+					wildCardString += pathVector[i] + "/";
+				}
+				wildCardString += pathVector[ pathVector.size() - 1 ];
+				paramMap["*"] = wildCardString;
+				currentIndex = pathVector.size();
+				return { currentNode->wildcardChild.get(), paramMap };
+			}
+			else 
+			{
+				return { nullptr, paramMap };
+			}
+			break;
+		}
+
+		default:
+			return { currentNode, paramMap };
+	}
+	for (auto& mode : allModes)
+	{
+		auto [dfsResultPtr, paramResult] = dfsFindMatch(currentNode, pathVector, mode, currentIndex + 1, paramMap);
+		if (dfsResultPtr && dfsResultPtr->route.has_value())
+		{
+			return { dfsResultPtr, paramResult };
+		}
+
+	}
+
+	return { nullptr, paramMap };
+	
+	
+};
+
 std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) { 
 	auto& requestHead = requestWithBody.head;
 	if (!methodsRoot.count(requestHead.method)) {
 		return std::nullopt;
 	};
-	RadixTreeNode* currentNodePtr = methodsRoot[requestHead.method].get();
+	RadixTreeNode* methodHeadPtr = methodsRoot[requestHead.method].get();
 
 	std::vector<std::string> pathAndQueryVector = splitByDelimiter(requestHead.path, "?");
 
@@ -92,42 +196,34 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 		{
 			std::string decodedString = stringDecode(param);
 			std::vector<std::string> splitByEqual = splitByDelimiter(decodedString, "=");
-			requestHead.queryParams[splitByEqual[0]] = splitByEqual[1];
+			if(splitByEqual.size() == 2)
+			{
+				requestHead.queryParams[splitByEqual[0]] = splitByEqual[1];
+			}
 		}
 	}
 
 	std::string fullPath = pathAndQueryVector[0];
 	std::vector<std::string> splittedPath = splitByDelimiter(fullPath, "/");
 
-
-
-	for (size_t i = 0; i < splittedPath.size(); i++)
+	size_t initialIndex = 0;
+	std::unordered_map<std::string, std::string> emptyMap{};
+	for (auto& mode : allModes)
 	{
-
-		std::string currentString = stringDecode(splittedPath[i]);
-
-
-		auto it = currentNodePtr->children.find(currentString);
-		if (it != currentNodePtr->children.end())
+		auto [resultNodePtrDfs, paramResult] = dfsFindMatch(methodHeadPtr, splittedPath, mode, initialIndex, emptyMap);
+		if (resultNodePtrDfs && resultNodePtrDfs->route.has_value())
 		{
-			currentNodePtr = it->second.get();
-			continue;
-		}
-
-		if (currentNodePtr->paramChild)
-		{
-			currentNodePtr = currentNodePtr->paramChild.get();
-			requestHead.params[currentNodePtr->paramName] = currentString;
-			continue;
+			mergeParams(requestWithBody, paramResult);
+			return resultNodePtrDfs->route;
 
 		}
 
-		return std::nullopt;
 	}
+	return std::nullopt;
+	
 
-	return currentNodePtr->route;
+
 };
-
 
 
 
@@ -140,7 +236,7 @@ void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& re
 		auto next = chain;
 		auto& currentFunction = middlewareVector[i];
 
-		chain = [&currentFunction, &request, &response, next]() {
+		chain = [currentFunction, &request, &response, next]() {
 			currentFunction(request, response, next);
 		};
 	};

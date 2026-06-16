@@ -18,10 +18,23 @@ struct Route
 };
 
 
+enum class DFSMode
+{
+	DIRECT,
+	PARAM,
+	WILDCARD
+};
+
+constexpr DFSMode allModes[] = {
+	DFSMode::DIRECT,
+	DFSMode::PARAM,
+	DFSMode::WILDCARD
+};
 
 struct RadixTreeNode {
 	std::unordered_map<std::string, std::unique_ptr<RadixTreeNode>> children;
 	std::unique_ptr<RadixTreeNode> paramChild;
+	std::unique_ptr<RadixTreeNode> wildcardChild;
 	std::string paramName;
 	std::optional<Route> route;
 

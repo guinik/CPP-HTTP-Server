@@ -11,6 +11,16 @@ void PrintRequest(const HTTPRequest& requestWBody) {
 		std::cout << key << ": " << value << "\n";
 	}
 
+	std::cout << "--- PARAM HEADERS ---\n";
+	for (const auto& [key, value] : req.params) {
+		std::cout << key << ": " << value << "\n";
+	}
+
+	std::cout << "--- QUERY PARAMS ---\n";
+	for (const auto& [key, value] : req.queryParams) {
+		std::cout << key << ": " << value << "\n";
+	}
+
 	std::cout << "\n--- BODY ---\n";
 	std::cout << requestWBody.body.raw << "\n";
 
@@ -72,7 +82,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 
 
 
-			//PrintRequest(request);
+			PrintRequest(request);
 			if (route.has_value())
 			{
 				applyRoute(route.value().middleware, request, response, route.value().handler);

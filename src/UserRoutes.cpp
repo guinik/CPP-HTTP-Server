@@ -40,6 +40,13 @@ void addUserRoutes(RadixTree& router)
         response.body = "user id is: " + req.head.params.at("id");
         });
 
+    router.add("/users/*", "GET", { userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+        response.version = "HTTP/1.1";
+        response.code = "200";
+        response.reason = "OK";
+        response.body = "requested file is: " + req.head.params.at("*");
+        });
+
     router.add("/users", "OPTIONS", {userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "204";
         response.reason = "No Content";
