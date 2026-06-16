@@ -105,7 +105,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 		}
 		catch (const SocketDisconnectException& e)
 		{
-			std::cerr << "Connection error: " << e.what() << "\n";
+			std::cerr << "Connection finished: " << e.what() << "\n";
 			return;
 		}
 		catch (const std::exception& e) {
