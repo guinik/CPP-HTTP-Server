@@ -1,67 +1,71 @@
 # C++ HTTP Server
 
-A lightweight HTTP/1.1 server built from scratch in C++20 for Windows, featuring a radix tree router, middleware pipeline, thread pool, CORS, and RAII socket management.
+A lightweight HTTP/1.1 server built from scratch in C++20 for Windows. No frameworks, no dependencies beyond the Windows SDK and a vendored JSON header.
 
 ## Features
 
-- **Radix tree router** - O(path depth) route matching with named parameters (`:id`) and wildcard segments (`*`)
+- **Radix tree router** - O(path depth) matching with named parameters (`:id`), wildcard segments (`*`), and DFS backtracking for correct specificity
 - **HTTP/1.1 keep-alive** - persistent connections reused across multiple requests; respects `Connection: close` and HTTP/1.0 defaults
-- **HTTP/1.1 parser** - parses raw TCP bytes into structured request objects (method, path, headers, body)
 - **Thread pool** - fixed-size pool sized to `hardware_concurrency()`; no unbounded thread spawning
-- **Middleware pipeline** - per-route middleware chain with `Next` continuation; built-in `parseJson` and `makeCors` middleware
-- **Static file serving** - wildcard routes can serve files from disk with MIME type detection
-- **CORS** - configurable allowed origins, methods, and headers; handles `OPTIONS` preflight automatically
-- **Query parameter parsing** - `?key=value` pairs extracted into `req.head.queryParams`
-- **JSON body parsing** - `Content-Type: application/json` bodies parsed into `req.body.json` (nlohmann/json)
-- **Graceful shutdown** - CTRL-C (SIGINT) sets a stop flag; accept loop drains and exits cleanly
-- **RAII wrappers** - `SocketGuard`, `AddrInfoGuard`, and `WinSocketGuard` ensure clean resource cleanup on every code path
-- **Typed error hierarchy** - distinct exception types for each WSA failure stage
+- **Middleware pipeline** - per-route chain with `Next` continuation; short-circuit by not calling `next()`
+- **Static file serving** - wildcard routes serve files from disk with MIME type detection
+- **CORS** - configurable origins, methods, and headers; handles `OPTIONS` preflight automatically
+- **JSON body parsing** - `Content-Type: application/json` bodies parsed automatically into `req.body.json` (nlohmann/json)
+- **Query parameter parsing** - `?key=value` pairs URL-decoded into `req.head.queryParams`
+- **Case-insensitive headers** - header lookup follows RFC 7230; `Content-Type` and `content-type` are the same key
+- **Request logging** - built-in middleware logs method, path, status, and latency
+- **Graceful shutdown** - CTRL-C sets a stop flag; accept loop drains and exits cleanly
+- **RAII everywhere** - `SocketGuard`, `AddrInfoGuard`, and `WinSocketGuard` ensure clean resource cleanup on every code path
 
 ## Architecture
 
 ```
 main.cpp
+  └── parses port from argv (default 2700)
   └── registers routes via addUserRoutes()
   └── creates ThreadPool (hardware_concurrency threads)
   └── creates WSAHandler → calls run()
 
 WSAHandler::run()
-  └── sets up TCP listen socket (1 s accept timeout for shutdown polling)
-  └── accept loop → enqueues connection on ThreadPool
-  └── checks g_running flag; exits loop on SIGINT
+  └── sets up TCP listen socket
+  └── accept loop → enqueues HandleConnection on ThreadPool
+  └── polls g_running flag; exits on SIGINT
 
-HandleConnection()
-  └── reads raw bytes from socket
-  └── parseRawBytesHeadRequest() + parseRawBytesBodyRequest() → HTTPRequest
-  └── RadixTree::match() → finds Route (populates req.head.params + queryParams)
-  └── applyRoute() → runs middleware chain → calls handler → HTTPResponse
-  └── HTTPResponseToRawString() → sends back over socket
+HandleConnection()  [runs on thread pool]
+  └── keep-alive loop:
+        └── ReadRequestHead() → ReadRequestBody() → HTTPRequest
+        └── RadixTree::match() → node (populates req.head.params + queryParams)
+        └── method lookup → 404 / 405 / applyRoute()
+        └── applyRoute() → middleware chain → handler → HTTPResponse
+        └── HTTPResponseToRawString() → sendData()
+        └── break if Connection: close
 ```
 
 ## Project Structure
 
 ```
 include/
-  AddrInfo.hpp          - RAII wrapper for getaddrinfo result
-  SocketGuard.hpp       - RAII wrapper for SOCKET handle
-  WSA.hpp               - WSAHandler class + WinSocketGuard (WSAStartup/Cleanup)
-  HTTPRequest.hpp       - HTTPRequest/HTTPHead/HTTPBody structs + parser declarations
-  HTTPResponse.hpp      - HTTPResponse struct
-  Router.hpp            - RadixTree, RadixTreeNode, Route, MiddleWare, Handler types
-  HandleConnection.hpp  - HandleConnection() + helpers
-  Cors.hpp              - makeCors() middleware factory
-  Utils.hpp             - parseJson middleware
-  UserRoutes.hpp        - addUserRoutes() declaration
-  json.hpp              - nlohmann/json (single-header, vendored)
+  AddrInfo.hpp       - RAII wrapper for getaddrinfo result
+  SocketGuard.hpp    - RAII wrapper for SOCKET handle
+  WSA.hpp            - WSAHandler class + WinSocketGuard
+  HTTPRequest.hpp    - HTTPRequest / HTTPHead / HTTPBody structs + parser declarations
+  HTTPResponse.hpp   - HTTPResponse struct
+  Router.hpp         - RadixTree, RadixTreeNode, Route, MiddleWare, Handler types
+  HandleConnection.hpp
+  Cors.hpp           - makeCors() middleware factory
+  Utils.hpp          - parseJson + requestLogger middleware
+  UserRoutes.hpp     - addUserRoutes() declaration
+  json.hpp           - nlohmann/json (single-header, vendored)
 
 src/
-  WSA.cpp               - WSAHandler::run() (listen loop, thread pool dispatch)
-  HandleConnection.cpp  - connection lifecycle + response serializer
-  HTTPRequest.cpp       - raw bytes → HTTPRequest parser (head, body, query params)
-  Router.cpp            - RadixTree::add(), RadixTree::match(), applyRoute()
+  main.cpp              - entry point, port config, signal handler
+  WSA.cpp               - listen loop, thread pool dispatch
+  HandleConnection.cpp  - connection lifecycle, keep-alive loop, response serializer
+  HTTPRequest.cpp       - raw bytes → HTTPRequest (head, body, query params)
+  Router.cpp            - RadixTree::add(), match(), dfsFindMatch(), applyRoute()
   UserRoutes.cpp        - user-defined route handlers
   ThreadPool.cpp        - fixed-size thread pool
-  main.cpp              - entry point, signal handler, wires up components
+  SocketGuard.cpp       - send, recv, bind, listen, accept wrappers
 ```
 
 ## Building
@@ -76,39 +80,39 @@ cmake --build build
 ## Running
 
 ```bash
-./build/Debug/HTTPSERVER.exe
+./build/Debug/HTTPSERVER.exe          # default port 2700
+./build/Debug/HTTPSERVER.exe 8080     # custom port
 # Creating server with: 8 threads.
-# Server listening on port 2700...
+# Server listening on port 8080...
 ```
 
 Press CTRL-C to shut down gracefully.
 
 ## Defining Routes
 
-Add routes in `src/UserRoutes.cpp`. Handlers receive the request and mutate the response in place. Each route takes an optional middleware list that runs before the handler.
+Routes are registered in `src/UserRoutes.cpp`. Each route takes a method, path, optional middleware list, and a handler that mutates the response in place.
 
 ```cpp
 void addUserRoutes(RadixTree& router) {
-    // Route with middleware
-    router.add("/users", "GET", {parseJson, userCorsMiddleWare},
-        [](const HTTPRequest& req, HTTPResponse& res) {
-            res.code = "200";
-            res.reason = "OK";
+
+    // Basic route
+    router.add("/users", "GET", {requestLogger, makeCors(corsOpts)},
+        [](HTTPRequest& req, HTTPResponse& res) {
+            res.code = "200"; res.reason = "OK"; res.version = "HTTP/1.1";
             res.headers["Content-Type"] = "application/json";
             res.body = nlohmann::json{{"message", "hello"}}.dump();
         });
 
-    // Named URL parameter
-    router.add("/users/:id", "GET", {userCorsMiddleWare},
-        [](const HTTPRequest& req, HTTPResponse& res) {
-            res.code = "200";
-            res.reason = "OK";
+    // Named URL parameter - available as req.head.params.at("id")
+    router.add("/users/:id", "GET", {requestLogger},
+        [](HTTPRequest& req, HTTPResponse& res) {
+            res.code = "200"; res.reason = "OK"; res.version = "HTTP/1.1";
             res.body = "user id: " + req.head.params.at("id");
         });
 
-    // Wildcard route — captures everything after /public/ including subdirectories
+    // Wildcard - captures full subpath including slashes into req.head.params.at("*")
     router.add("/public/*", "GET", {},
-        [](const HTTPRequest& req, HTTPResponse& res) {
+        [](HTTPRequest& req, HTTPResponse& res) {
             std::string filePath = "public/" + req.head.params.at("*");
             std::ifstream file(filePath);
             if (!file) {
@@ -117,14 +121,22 @@ void addUserRoutes(RadixTree& router) {
             }
             res.body = std::string(std::istreambuf_iterator<char>(file), {});
             res.code = "200"; res.reason = "OK"; res.version = "HTTP/1.1";
-            res.headers["Content-Type"] = "text/html"; // set appropriate MIME type
+            res.headers["Content-Type"] = "text/html";
         });
 }
 ```
 
-### Query Parameters
+### Route priority
 
-Available in `req.head.queryParams`:
+When multiple route types could match the same path, the router resolves them in this order:
+
+1. Exact literal match
+2. Named parameter (`:id`)
+3. Wildcard (`*`)
+
+So `/users/42` always hits `/users/:id` before `/users/*`.
+
+### Query parameters
 
 ```cpp
 std::string page = req.head.queryParams.count("page")
@@ -133,15 +145,11 @@ std::string page = req.head.queryParams.count("page")
 
 ### Middleware
 
-Middleware functions have the signature `void(HTTPRequest&, HTTPResponse&, Next)`. Call `next()` to continue the chain or return early to short-circuit.
-
 ```cpp
-MiddleWare myMiddleware = [](HTTPRequest& req, HTTPResponse& res, Next next) {
+MiddleWare authMiddleware = [](HTTPRequest& req, HTTPResponse& res, Next next) {
     if (!req.head.headers.count("Authorization")) {
-        res.code = "401";
-        res.reason = "Unauthorized";
-        res.version = "HTTP/1.1";
-        return;
+        res.code = "401"; res.reason = "Unauthorized"; res.version = "HTTP/1.1";
+        return; // do not call next() - short-circuits the chain
     }
     next();
 };
@@ -158,37 +166,19 @@ CorsOptions opts = {
 MiddleWare cors = makeCors(opts);
 
 router.add("/api/data", "GET", {cors}, handler);
-// Also register an OPTIONS route for preflight:
-router.add("/api/data", "OPTIONS", {cors}, [](const HTTPRequest&, HTTPResponse& res) {
+router.add("/api/data", "OPTIONS", {cors}, [](HTTPRequest&, HTTPResponse& res) {
     res.code = "204"; res.reason = "No Content"; res.version = "HTTP/1.1";
 });
 ```
 
 Use `allowedOrigins = {"*"}` to permit any origin.
 
-## Example
-
-```bash
-curl http://localhost:2700/users
-# {"limit":"not set","message":"No message","page":"not set"}
-
-curl "http://localhost:2700/users?page=2&limit=10"
-# {"limit":"10","message":"No message","page":"2"}
-
-curl http://localhost:2700/users/42
-# user id is: 42
-
-curl http://localhost:2700/unknown
-# HTTP/1.1 404 Path not found
-```
-
 ## Platform
 
-Windows only - uses WinSock2 (`ws2_32`). No external dependencies beyond the Windows SDK and the vendored `json.hpp`.
+Windows only - depends on WinSock2 (`ws2_32`). No external dependencies beyond the Windows SDK and the vendored `json.hpp`.
 
 ## Known Limitations
 
-This is a learning project - the following are known gaps, not bugs to fix right now:
-
-- **Single param or wildcard child per node** - the radix tree supports one named parameter or wildcard per path segment level; you cannot define both `:id` and `*` on the same node.
-- **Windows only** - depends on WinSock2; not portable to Linux/macOS without replacing the networking layer.
+- **Single param or wildcard per node** - a path segment level can have either `:param` or `*`, not both
+- **No TLS** - HTTPS would require integrating a library such as OpenSSL or mbedTLS
+- **Windows only** - WinSock2 is not portable; a POSIX socket abstraction would be needed for Linux/macOS
