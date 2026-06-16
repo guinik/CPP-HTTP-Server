@@ -148,7 +148,11 @@ std::pair<RadixTreeNode*, std::unordered_map<std::string, std::string>> dfsFindM
 				std::string wildCardString;
 				for (size_t i = currentIndex; i < pathVector.size() - 1; i++)
 				{
-					wildCardString += pathVector[i] + "/";
+					if (i > currentIndex)
+					{
+						wildCardString += "/";
+					}
+					wildCardString += pathVector[i];
 				}
 				wildCardString += pathVector[ pathVector.size() - 1 ];
 				paramMap["*"] = wildCardString;
@@ -230,17 +234,20 @@ std::optional<Route> RadixTree::match(HTTPRequest& requestWithBody) {
 void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler)
 {
 	std::function<void()> chain = [](){};
+	if (!middlewareVector.empty()) 
+	{
+	
+		for (int i = middlewareVector.size() - 1; i >= 0 && !middlewareVector.empty(); --i) {
 
-	for (int i = middlewareVector.size() - 1; i >= 0; --i) {
+			auto next = chain;
+			auto& currentFunction = middlewareVector[i];
 
-		auto next = chain;
-		auto& currentFunction = middlewareVector[i];
-
-		chain = [currentFunction, &request, &response, next]() {
-			currentFunction(request, response, next);
+			chain = [currentFunction, &request, &response, next]() {
+				currentFunction(request, response, next);
+			};
 		};
-	};
 
+	}
 	chain();
 	if (response.code.empty()) {
 		handler(request, response);

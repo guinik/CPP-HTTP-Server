@@ -57,8 +57,14 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 			HTTPHead head = parseRawBytesHeadRequest(requestBytes);
 			size_t bodyBytes{ 0 };
 			if (head.headers.count("Content-Length") != 0)
-			{
-				bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
+			{	
+				try
+				{
+					bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
+				}
+				catch (std::exception& e) {
+					throw std::format("Parsin content-legnth failed : {}", e.what());
+				}
 			}
 
 			std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
