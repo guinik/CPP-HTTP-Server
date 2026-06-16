@@ -63,7 +63,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 					bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
 				}
 				catch (std::exception& e) {
-					throw std::format("Parsin content-legnth failed : {}", e.what());
+					throw std::runtime_error(std::format("Parsin content-legnth failed : {}", e.what()));
 				}
 			}
 
@@ -83,7 +83,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 			HTTPRequest request = constructRequest(head, body);
 
 			RadixTreeNode* routePointer = router.match(request);
-			PrintRequest(request);
+			//PrintRequest(request);
 
 
 			if(routePointer)

@@ -245,7 +245,7 @@ void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& re
 		for (int i = middlewareVector.size() - 1; i >= 0 && !middlewareVector.empty(); --i) {
 
 			auto next = chain;
-			auto& currentFunction = middlewareVector[i];
+			auto currentFunction = middlewareVector[i];
 
 			chain = [currentFunction, &request, &response, next]() {
 				currentFunction(request, response, next);

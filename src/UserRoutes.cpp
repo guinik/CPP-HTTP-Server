@@ -16,7 +16,7 @@ MiddleWare userCorsMiddleWare = makeCors(userCors);
 
 void addUserRoutes(RadixTree& router)
 {
-    router.add("/users", "GET", {parseJson, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+    router.add("/users", "GET", { requestLogger, parseJson, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "200";
         response.version = "HTTP/1.1";
         response.reason = "All good";
@@ -35,14 +35,14 @@ void addUserRoutes(RadixTree& router)
 
 
 
-    router.add("/users/:id", "GET", { userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+    router.add("/users/:id", "GET", { requestLogger, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.version = "HTTP/1.1";
         response.code = "200";
         response.reason = "OK";
         response.body = "user id issss: " + req.head.params.at("id");
         });
 
-    router.add("/public/*", "GET", { userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+    router.add("/public/*", "GET", { requestLogger, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
             std::string filePath = req.head.params.at("*");
 
             // open the file
@@ -74,7 +74,7 @@ void addUserRoutes(RadixTree& router)
             response.body = content;
         });
 
-    router.add("/users", "OPTIONS", {userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+    router.add("/users", "OPTIONS", { requestLogger, userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "204";
         response.reason = "No Content";
         response.version = "HTTP/1.1";

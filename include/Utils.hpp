@@ -1,6 +1,7 @@
 #pragma once
 #include "Router.hpp"
 #include "json.hpp"
+#include <iostream>
 
 using json = nlohmann::json;
 
@@ -32,3 +33,15 @@ MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
 
 
+MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next next) {
+	auto start = std::chrono::steady_clock::now();
+
+	next();
+
+	auto end = std::chrono::steady_clock::now();
+	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+	std::cout << req.head.method << " " << req.head.path
+		<< " " << res.code
+		<< " " << ms << "ms\n";
+	};
