@@ -9,7 +9,7 @@ std::string stringDecode(std::string input)
 	for(size_t i{}; i < input.size(); i++)
 	{
 		// if coded it will have he form %AA 
-		if (input[i] == '%' && i + 2 > input.size())
+		if (input[i] == '%' && i + 2 < input.size())
 		{
 			int hexValue = std::stoi(input.substr(i + 1, 2), nullptr, 16);
 			char characterValue = static_cast<char>(hexValue);
