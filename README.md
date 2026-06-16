@@ -4,10 +4,12 @@ A lightweight HTTP/1.1 server built from scratch in C++20 for Windows, featuring
 
 ## Features
 
-- **Radix tree router** - O(path depth) route matching with support for named URL parameters (`:id`)
+- **Radix tree router** - O(path depth) route matching with named parameters (`:id`) and wildcard segments (`*`)
+- **HTTP/1.1 keep-alive** - persistent connections reused across multiple requests; respects `Connection: close` and HTTP/1.0 defaults
 - **HTTP/1.1 parser** - parses raw TCP bytes into structured request objects (method, path, headers, body)
 - **Thread pool** - fixed-size pool sized to `hardware_concurrency()`; no unbounded thread spawning
 - **Middleware pipeline** - per-route middleware chain with `Next` continuation; built-in `parseJson` and `makeCors` middleware
+- **Static file serving** - wildcard routes can serve files from disk with MIME type detection
 - **CORS** - configurable allowed origins, methods, and headers; handles `OPTIONS` preflight automatically
 - **Query parameter parsing** - `?key=value` pairs extracted into `req.head.queryParams`
 - **JSON body parsing** - `Content-Type: application/json` bodies parsed into `req.body.json` (nlohmann/json)
@@ -103,6 +105,20 @@ void addUserRoutes(RadixTree& router) {
             res.reason = "OK";
             res.body = "user id: " + req.head.params.at("id");
         });
+
+    // Wildcard route — captures everything after /public/ including subdirectories
+    router.add("/public/*", "GET", {},
+        [](const HTTPRequest& req, HTTPResponse& res) {
+            std::string filePath = "public/" + req.head.params.at("*");
+            std::ifstream file(filePath);
+            if (!file) {
+                res.code = "404"; res.reason = "Not Found"; res.version = "HTTP/1.1";
+                return;
+            }
+            res.body = std::string(std::istreambuf_iterator<char>(file), {});
+            res.code = "200"; res.reason = "OK"; res.version = "HTTP/1.1";
+            res.headers["Content-Type"] = "text/html"; // set appropriate MIME type
+        });
 }
 ```
 
@@ -174,6 +190,5 @@ Windows only - uses WinSock2 (`ws2_32`). No external dependencies beyond the Win
 
 This is a learning project - the following are known gaps, not bugs to fix right now:
 
-- **No keep-alive** - each connection is handled once and closed. HTTP/1.1 persistent connections are not supported.
-- **Single param child per node** - the radix tree supports one named parameter per path segment level; deeper nested params (e.g. `/a/:x/b/:y`) may need testing.
+- **Single param or wildcard child per node** - the radix tree supports one named parameter or wildcard per path segment level; you cannot define both `:id` and `*` on the same node.
 - **Windows only** - depends on WinSock2; not portable to Linux/macOS without replacing the networking layer.
