@@ -2,6 +2,8 @@
 #include "Utils.hpp"
 #include "Cors.hpp"
 #include <iostream>
+#include <fstream>
+
 
 
 CorsOptions userCors = {
@@ -37,14 +39,39 @@ void addUserRoutes(RadixTree& router)
         response.version = "HTTP/1.1";
         response.code = "200";
         response.reason = "OK";
-        response.body = "user id is: " + req.head.params.at("id");
+        response.body = "user id issss: " + req.head.params.at("id");
         });
 
-    router.add("/users/*", "GET", { userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
-        response.version = "HTTP/1.1";
-        response.code = "200";
-        response.reason = "OK";
-        response.body = "requested file is: " + req.head.params.at("*");
+    router.add("/public/*", "GET", { userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+            std::string filePath = req.head.params.at("*");
+
+            // open the file
+            std::ifstream file(filePath);
+
+            if (!file.is_open()) {
+                response.version = "HTTP/1.1";
+                response.code = "404";
+                response.reason = "Not Found";
+                response.body = "File not found: " + filePath;
+                return;
+            }
+
+            // read the file contents
+            std::string content((std::istreambuf_iterator<char>(file)),
+                std::istreambuf_iterator<char>());
+
+            // detect content type
+            std::string contentType = "text/plain";
+            if (filePath.ends_with(".html")) contentType = "text/html";
+            else if (filePath.ends_with(".css"))  contentType = "text/css";
+            else if (filePath.ends_with(".js"))   contentType = "application/javascript";
+            else if (filePath.ends_with(".json")) contentType = "application/json";
+
+            response.version = "HTTP/1.1";
+            response.code = "200";
+            response.reason = "OK";
+            response.headers["Content-Type"] = contentType;
+            response.body = content;
         });
 
     router.add("/users", "OPTIONS", {userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
