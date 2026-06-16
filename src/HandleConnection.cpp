@@ -17,67 +17,97 @@ void PrintRequest(const HTTPRequest& requestWBody) {
 	std::cout << "====================\n";
 }
 
+bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
+{
+	auto keepAlive = (request.head.version == "HTTP/1.1");
+	auto it = request.head.headers.find("Connection");
+	if (it != request.head.headers.end())
+	{
+		keepAlive = (it->second == "keep-alive");
+	}
+
+	response.headers["Connection"] = keepAlive ? "keep-alive" : "close";
+
+	return keepAlive;
+
+};
+
 void HandleConnection(SocketGuard socket, RadixTree& router) {
 	size_t timeoutSeconds{ 5 };
 	socket.setTimeout(timeoutSeconds);
 
-	HTTPResponse response;
-	try{
-		auto [requestBytes, leftover] = ReadRequestHead(socket);
-
-		HTTPHead head = parseRawBytesHeadRequest(requestBytes);
-		size_t bodyBytes{ 0 };
-		if (head.headers.count("Content-Length") != 0)
-		{
-			bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
-		}
-
-		std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
-	
-		auto it = head.headers.find("Content-Type");
-		std::string contentType = "";
-		if(it != head.headers.end())
-		{
-			contentType = it->second;
-		}
-
-
-
-		HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes, contentType);
-
-		HTTPRequest request = constructRequest(head, body);
-
-		std::optional<Route> route = router.match(request);
-	
-	
-	
-		//PrintRequest(request);
-		if(route.has_value())
-		{
-			applyRoute(route.value().middleware, request, response, route.value().handler);
-		}
-		else
-		{
-			response.code = "404";
-			response.version = "HTTP/1.1";
-			response.reason = "Path not found";
-		}
-
-	}
-	catch(const SocketDisconnectException& e)
+	while (socket.isValid())
 	{
-		std::cerr << "Connection error: " << e.what() << "\n";
-		return;
-	}
-	catch (const std::exception& e) {
-		std::cerr << "Connection error: " << e.what() << "\n";
-		response.code = 500;
-		response.reason = "Server Error";
+		HTTPResponse response;
+		bool keepAlive = false;
+
+		try {
+			auto [requestBytes, leftover] = ReadRequestHead(socket);
+
+			HTTPHead head = parseRawBytesHeadRequest(requestBytes);
+			size_t bodyBytes{ 0 };
+			if (head.headers.count("Content-Length") != 0)
+			{
+				bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
+			}
+
+			std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
+
+			auto it = head.headers.find("Content-Type");
+			std::string contentType = "";
+			if (it != head.headers.end())
+			{
+				contentType = it->second;
+			}
+
+
+
+			HTTPBody body = parseRawBytesBodyRequest(requestBodyBytes, contentType);
+
+			HTTPRequest request = constructRequest(head, body);
+
+			std::optional<Route> route = router.match(request);
+
+
+
+
+
+			//PrintRequest(request);
+			if (route.has_value())
+			{
+				applyRoute(route.value().middleware, request, response, route.value().handler);
+			}
+			else
+			{
+				response.code = "404";
+				response.version = "HTTP/1.1";
+				response.reason = "Path not found";
+			}
+
+			keepAlive = keepAliveMechanism(request, response);
+
+		}
+		catch (const SocketDisconnectException& e)
+		{
+			std::cerr << "Connection error: " << e.what() << "\n";
+			return;
+		}
+		catch (const std::exception& e) {
+			std::cerr << "Connection error: " << e.what() << "\n";
+			response.code = "500";
+			response.reason = "Server Error";
+
+		}
+
+		std::string rawResponse = HTTPResponseToRawString(response);
+		socket.sendData(rawResponse);
+
+		if (!keepAlive)
+		{
+			break;
+		};
 
 	}
-
-	std::string rawResponse = HTTPResponseToRawString(response);
-	socket.sendData(rawResponse);
 }
 
 std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket) {
@@ -157,4 +187,3 @@ std::string HTTPResponseToRawString(HTTPResponse& response)
 
 	return rawString;
 };
-
