@@ -26,11 +26,11 @@ private:
 };
 #endif
 
-class WSAHandler {
+class HttpServer {
 public:
 	static constexpr size_t kMaxConnections = 1000;
 
-	WSAHandler(const std::string& PORT, RadixTree& router, ThreadPool& threadPool, std::atomic_bool& running)
+	HttpServer(const std::string& PORT, RouteTrie& router, ThreadPool& threadPool, std::atomic_bool& running)
 		: _PORT(PORT), _router(router), _threadPool(threadPool), _running(running) {}
 	void run();
 
@@ -39,7 +39,7 @@ private:
 	WinSocketGuard _winSocketInitializer;
 #endif
 	std::string _PORT;
-	RadixTree& _router;
+	RouteTrie& _router;
 	ThreadPool& _threadPool;
 	std::atomic_bool& _running;
 	std::atomic<size_t> _activeConnections{ 0 };

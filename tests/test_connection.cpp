@@ -30,7 +30,7 @@
 
 class ConnectionTest : public ::testing::Test {
 protected:
-    RadixTree        router;
+    RouteTrie        router;
     std::atomic_bool running{ true };
 
     void SetUp() override {

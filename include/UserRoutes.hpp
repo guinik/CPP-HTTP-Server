@@ -4,4 +4,4 @@
 #include "Router.hpp"
 
 
-void addUserRoutes(RadixTree& router);
+void addUserRoutes(RouteTrie& router);

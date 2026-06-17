@@ -4,7 +4,7 @@
 #include <format>
 
 
-void WSAHandler::run() {
+void HttpServer::run() {
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;

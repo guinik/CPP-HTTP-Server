@@ -34,7 +34,7 @@ TEST(StringDecode, TruncatedPercentSequencePassesThrough) {
     EXPECT_EQ(stringDecode("a%"), "a%");
 }
 
-// ── RadixTree::match ──────────────────────────────────────────────────────────
+// ── RouteTrie::match ──────────────────────────────────────────────────────────
 
 static HTTPRequest makeRequest(const std::string& method, const std::string& path) {
     HTTPRequest req;
@@ -44,7 +44,7 @@ static HTTPRequest makeRequest(const std::string& method, const std::string& pat
 }
 
 TEST(Router, LiteralMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     bool hit = false;
     tree.add("/users", "GET", {}, [&hit](const HTTPRequest&, HTTPResponse&) { hit = true; });
 
@@ -56,7 +56,7 @@ TEST(Router, LiteralMatch) {
 }
 
 TEST(Router, NamedParamMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users/:id", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users/42");
@@ -67,7 +67,7 @@ TEST(Router, NamedParamMatch) {
 }
 
 TEST(Router, WildcardMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/public/*", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/public/assets/style.css");
@@ -78,7 +78,7 @@ TEST(Router, WildcardMatch) {
 }
 
 TEST(Router, LiteralBeatsParam) {
-    RadixTree tree;
+    RouteTrie tree;
     bool hitLiteral = false;
     bool hitParam   = false;
     tree.add("/users/me",  "GET", {}, [&hitLiteral](const HTTPRequest&, HTTPResponse&) { hitLiteral = true; });
@@ -95,7 +95,7 @@ TEST(Router, LiteralBeatsParam) {
 }
 
 TEST(Router, MethodNotAllowedReturnsPathFoundFlag) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("POST", "/users");
@@ -106,7 +106,7 @@ TEST(Router, MethodNotAllowedReturnsPathFoundFlag) {
 }
 
 TEST(Router, QueryParamsParsed) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users?page=2&limit=10");
@@ -117,7 +117,7 @@ TEST(Router, QueryParamsParsed) {
 }
 
 TEST(Router, QueryParamsUrlDecoded) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/search", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/search?q=hello%20world");
@@ -127,7 +127,7 @@ TEST(Router, QueryParamsUrlDecoded) {
 }
 
 TEST(Router, NoMatchReturnsNullRoute) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/nonexistent");

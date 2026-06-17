@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
             port = argv[1];
         }
 
-        RadixTree router;
+        RouteTrie router;
         addUserRoutes(router);
 
 
@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
 
         Log::info(std::format("Creating server with: {} threads.", std::thread::hardware_concurrency()));
 
-        WSAHandler server(port, router, threadPool, g_running);
+        HttpServer server(port, router, threadPool, g_running);
         server.run();   // all logic inside
     }
     catch (const std::exception& e) {

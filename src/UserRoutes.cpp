@@ -15,7 +15,7 @@ CorsOptions userCors = {
 
 MiddleWare userCorsMiddleWare = makeCors(userCors);
 
-void addUserRoutes(RadixTree& router)
+void addUserRoutes(RouteTrie& router)
 {
     router.add("/users", "GET", { requestLogger, parseJson, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "200";

@@ -20,7 +20,7 @@ bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
 
 };
 
-void HandleConnection(SocketGuard socket, RadixTree& router, std::atomic_bool& running) {
+void HandleConnection(SocketGuard socket, RouteTrie& router, std::atomic_bool& running) {
 	// 1 s recv timeout: a blocked recv wakes within 1 s so the loop condition
 	// can re-evaluate _running after a shutdown signal.
 	socket.setTimeout(1);

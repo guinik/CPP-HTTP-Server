@@ -31,10 +31,10 @@ enum class DFSMode
 };
 
 
-struct RadixTreeNode {
-	std::unordered_map<std::string, std::unique_ptr<RadixTreeNode>> children;
-	std::unique_ptr<RadixTreeNode> paramChild;
-	std::unique_ptr<RadixTreeNode> wildcardChild;
+struct RouteTrieNode {
+	std::unordered_map<std::string, std::unique_ptr<RouteTrieNode>> children;
+	std::unique_ptr<RouteTrieNode> paramChild;
+	std::unique_ptr<RouteTrieNode> wildcardChild;
 	std::string paramName;
 	std::unordered_map<std::string, Route> routeMap;
 
@@ -46,13 +46,13 @@ struct RouteMatch {
 	bool pathFound = false;
 };
 
-class RadixTree {
+class RouteTrie {
 public:
 	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler);
 	RouteMatch match(HTTPRequest& request);
 
 private:
-	std::unique_ptr<RadixTreeNode> methodsRoot;
+	std::unique_ptr<RouteTrieNode> methodsRoot;
 };
 
 
