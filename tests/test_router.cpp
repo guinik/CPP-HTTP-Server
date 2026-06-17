@@ -3,6 +3,23 @@
 #include "HTTPRequest.hpp"
 #include "HTTPResponse.hpp"
 
+// Local test utility: compose and run a middleware chain in isolation.
+static void applyRoute(const std::vector<MiddleWare>& middleware,
+                       HTTPRequest& request, HTTPResponse& response,
+                       const Handler& handler)
+{
+    std::function<void(HTTPRequest&, HTTPResponse&)> chain =
+        [&handler](HTTPRequest& req, HTTPResponse& res) { handler(req, res); };
+    for (int i = static_cast<int>(middleware.size()) - 1; i >= 0; --i) {
+        auto next = chain;
+        auto mw   = middleware[i];
+        chain = [mw, next](HTTPRequest& req, HTTPResponse& res) {
+            mw(req, res, [&req, &res, &next]() { next(req, res); });
+        };
+    }
+    chain(request, response);
+}
+
 // ── stringDecode ──────────────────────────────────────────────────────────────
 
 TEST(StringDecode, PercentEncodedSpace) {
@@ -25,7 +42,16 @@ TEST(StringDecode, Mixed) {
     EXPECT_EQ(stringDecode("foo%3Dbar+baz"), "foo=bar baz");
 }
 
-// ── RadixTree::match ──────────────────────────────────────────────────────────
+TEST(StringDecode, InvalidPercentEncodingThrows) {
+    EXPECT_THROW(stringDecode("bad%GGvalue"), BadRequestException);
+}
+
+TEST(StringDecode, TruncatedPercentSequencePassesThrough) {
+    // % at end of string — not enough chars for a sequence, treated as literal
+    EXPECT_EQ(stringDecode("a%"), "a%");
+}
+
+// ── RouteTrie::match ──────────────────────────────────────────────────────────
 
 static HTTPRequest makeRequest(const std::string& method, const std::string& path) {
     HTTPRequest req;
@@ -35,82 +61,117 @@ static HTTPRequest makeRequest(const std::string& method, const std::string& pat
 }
 
 TEST(Router, LiteralMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     bool hit = false;
     tree.add("/users", "GET", {}, [&hit](const HTTPRequest&, HTTPResponse&) { hit = true; });
 
     auto req = makeRequest("GET", "/users");
-    auto* node = tree.match(req);
+    auto match = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_TRUE(node->routeMap.count("GET"));
+    EXPECT_NE(match.route, nullptr);
+    EXPECT_TRUE(match.pathFound);
 }
 
 TEST(Router, NamedParamMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users/:id", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users/42");
-    auto* node = tree.match(req);
+    auto match = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_EQ(req.head.params.at("id"), "42");
+    EXPECT_NE(match.route, nullptr);
+    EXPECT_EQ(match.params.at("id"), "42");
 }
 
 TEST(Router, WildcardMatch) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/public/*", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/public/assets/style.css");
-    auto* node = tree.match(req);
+    auto match = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_EQ(req.head.params.at("*"), "assets/style.css");
+    EXPECT_NE(match.route, nullptr);
+    EXPECT_EQ(match.params.at("*"), "assets/style.css");
 }
 
 TEST(Router, LiteralBeatsParam) {
-    RadixTree tree;
+    RouteTrie tree;
     bool hitLiteral = false;
     bool hitParam   = false;
     tree.add("/users/me",  "GET", {}, [&hitLiteral](const HTTPRequest&, HTTPResponse&) { hitLiteral = true; });
     tree.add("/users/:id", "GET", {}, [&hitParam]  (const HTTPRequest&, HTTPResponse&) { hitParam   = true; });
 
     auto req = makeRequest("GET", "/users/me");
-    auto* node = tree.match(req);
+    auto match = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_TRUE(node->routeMap.count("GET"));
-    // literal node has no paramName
-    EXPECT_TRUE(node->paramName.empty());
+    ASSERT_NE(match.route, nullptr);
+    HTTPResponse res;
+    match.route->composedChain(req, res);
+    EXPECT_TRUE(hitLiteral);
+    EXPECT_FALSE(hitParam);
+}
+
+TEST(Router, MethodNotAllowedReturnsPathFoundFlag) {
+    RouteTrie tree;
+    tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
+
+    auto req = makeRequest("POST", "/users");
+    auto match = tree.match(req);
+
+    EXPECT_EQ(match.route, nullptr);
+    EXPECT_TRUE(match.pathFound);
 }
 
 TEST(Router, QueryParamsParsed) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users?page=2&limit=10");
-    tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(req.head.queryParams.at("page"),  "2");
-    EXPECT_EQ(req.head.queryParams.at("limit"), "10");
+    EXPECT_EQ(match.queryParams.at("page"),  "2");
+    EXPECT_EQ(match.queryParams.at("limit"), "10");
 }
 
 TEST(Router, QueryParamsUrlDecoded) {
-    RadixTree tree;
+    RouteTrie tree;
     tree.add("/search", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/search?q=hello%20world");
-    tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(req.head.queryParams.at("q"), "hello world");
+    EXPECT_EQ(match.queryParams.at("q"), "hello world");
 }
 
-TEST(Router, NoMatchReturnsNullptr) {
-    RadixTree tree;
+TEST(Router, DuplicateRegistrationThrows) {
+    RouteTrie tree;
+    tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
+    EXPECT_THROW(
+        tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {}),
+        std::runtime_error
+    );
+}
+
+TEST(Router, DuplicateMethodOnSamePathThrows) {
+    // Two different methods on the same path are fine; duplicate method is not.
+    RouteTrie tree;
+    tree.add("/users", "GET",  {}, [](const HTTPRequest&, HTTPResponse&) {});
+    tree.add("/users", "POST", {}, [](const HTTPRequest&, HTTPResponse&) {});
+    EXPECT_THROW(
+        tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {}),
+        std::runtime_error
+    );
+}
+
+TEST(Router, NoMatchReturnsNullRoute) {
+    RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/nonexistent");
-    EXPECT_EQ(tree.match(req), nullptr);
+    auto match = tree.match(req);
+
+    EXPECT_EQ(match.route, nullptr);
+    EXPECT_FALSE(match.pathFound);
 }
 
 // ── applyRoute ────────────────────────────────────────────────────────────────

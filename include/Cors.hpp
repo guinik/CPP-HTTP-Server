@@ -1,5 +1,5 @@
 #pragma once
-#include "Router.hpp"
+#include "RouteTypes.hpp"
 
 struct CorsOptions{
     std::vector<std::string> allowedOrigins;
@@ -11,20 +11,25 @@ inline MiddleWare makeCors(CorsOptions corsOpt)
 {
     return [corsOpt](HTTPRequest& req, HTTPResponse& res, Next next) {
 
-        std::string origin = req.head.headers.count("Origin") ?
-            req.head.headers["Origin"] : "";
+        // No Origin header means this is not a browser cross-origin request
+        // (curl, server-to-server, direct navigation). CORS rules don't apply.
+        if (!req.head.headers.count("Origin")) {
+            next();
+            return;
+        }
+
+        std::string origin = req.head.headers["Origin"];
 
         bool allowed = false;
         for (auto& allowedOr : corsOpt.allowedOrigins) {
             if (allowedOr == "*")
-            {  
+            {
                 allowed = true;
                 origin = "*";
                 break;
             }
             if (allowedOr == origin) {
                 allowed = true;
-                origin = allowedOr;
                 break;
             }
         }

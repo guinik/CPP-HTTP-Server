@@ -1,22 +1,15 @@
 #include "ThreadPool.hpp"
+#include "Logger.hpp"
+#include <format>
 
-void ThreadPool::enqueue(std::function<void()> task)
-{
-	{
-		std::unique_lock<std::mutex> lock(queueMtx);
-		tasks.push(std::move(task));
-	}
-	cv.notify_one();
-}
-
-
-ThreadPool::ThreadPool(size_t numThreads) {
+ThreadPool::ThreadPool(size_t numThreads, size_t maxQueueDepth_)
+    : maxQueueDepth(maxQueueDepth_) {
 
 	for (size_t i{}; i < numThreads; i++) {
 		threads.emplace_back([this]() {
 
 			while (true) {
-				std::function<void()> task;
+				Task task;
 				{
 					std::unique_lock<std::mutex> lock(queueMtx);
 					cv.wait(lock, [this]() {
@@ -27,7 +20,13 @@ ThreadPool::ThreadPool(size_t numThreads) {
 					task = std::move(tasks.front());
 					tasks.pop();
 				}
-				task();
+				try {
+					task();
+				} catch (const std::exception& e) {
+					Log::error(std::format("[ThreadPool] task threw: {}", e.what()));
+				} catch (...) {
+					Log::error("[ThreadPool] task threw unknown exception");
+				}
 			}
 			}
 		);

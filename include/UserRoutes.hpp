@@ -1,7 +1,5 @@
 #pragma once
-#include <string>
-#include <unordered_map>
 #include "Router.hpp"
+#include "Metrics.hpp"
 
-
-void addUserRoutes(RadixTree& router);
+void addUserRoutes(RouteTrie& router, Metrics& metrics);

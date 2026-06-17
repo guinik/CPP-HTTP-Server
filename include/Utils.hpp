@@ -1,9 +1,8 @@
 #pragma once
-#include "Router.hpp"
-#include "json.hpp"
-#include <iostream>
-
-using json = nlohmann::json;
+#include <chrono>
+#include <format>
+#include "RouteTypes.hpp"
+#include "Logger.hpp"
 
 inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
@@ -12,22 +11,29 @@ inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next)
 		next();
 		return;
 	}
-	if (req.head.headers.count("Content-Type") && req.head.headers["Content-Type"] != "application/json")
+	auto ctIt = req.head.headers.find("Content-Type");
+	if (ctIt != req.head.headers.end())
 	{
-		res.code = "415";
-		res.reason = "Unsported media no json";
-		res.version = "HTTP/1.1";
-		return;
-	};
+		// Strip parameters (e.g. "; charset=utf-8") before comparing the media type.
+		const std::string& ctVal = ctIt->second;
+		std::string mediaType = ctVal.substr(0, ctVal.find(';'));
+		auto end = mediaType.find_last_not_of(' ');
+		if (end != std::string::npos) mediaType = mediaType.substr(0, end + 1);
+		if (mediaType != "application/json")
+		{
+			res.code = "415";
+			res.reason = "Unsupported Media Type";
+			return;
+		}
+	}
 	try {
-		req.body.json = json::parse(req.body.raw);
+		req.body.json = nlohmann::json::parse(req.body.raw);
 		next();
 		return;
 	}
-	catch (json::parse_error& e ){
+	catch (const nlohmann::json::parse_error&) {
 		res.code = "400";
 		res.reason = "Invalid Json";
-		res.version = "HTTP/1.1";
 	}
 };
 
@@ -41,7 +47,6 @@ inline MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next n
 	auto end = std::chrono::steady_clock::now();
 	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-	std::cout << req.head.method << " " << req.head.path
-		<< " " << res.code
-		<< " " << ms << "ms\n";
-	};
+	Log::info(req.head.requestId,
+		std::format("{} {} {} {}ms", req.head.method, req.head.path, res.code, ms));
+};

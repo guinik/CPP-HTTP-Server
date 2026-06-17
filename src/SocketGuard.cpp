@@ -11,14 +11,14 @@
     #define SOCK_ERROR -1
 #endif
 
-void SocketGuard::sendData(const std::string& data) {
+void SocketGuard::send(const std::string& data) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot send on invalid socket");
 	}
 
 	size_t totalSent{ 0 };
 	while (totalSent < data.size()) {
-		int result = send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
+		int result = ::send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
 
 		if (result == SOCK_ERROR) {
 			int err = SOCKET_ERRNO;
@@ -30,11 +30,11 @@ void SocketGuard::sendData(const std::string& data) {
 			throw std::runtime_error(std::format("Send failed: {}", err));
 		}
 
-		totalSent += result;
+		totalSent += static_cast<size_t>(result);
 	}
 }
 
-void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
+void SocketGuard::create(int addrFamily, int addrType, int addrProtocol) {
 	if (_socket != INVALID_HANDLE) {
 		SOCK_CLOSE(_socket);
 	}
@@ -42,22 +42,24 @@ void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error(std::format("Invalid Listen Socket: {}", SOCKET_ERRNO));
 	}
+	int opt = 1;
+	setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
 }
 
-void SocketGuard::bindSocket(const sockaddr* addrName, int addrLength) {
+void SocketGuard::bind(const sockaddr* addrName, int addrLength) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot bind an invalid socket");
 	}
-	if (bind(_socket, addrName, addrLength) == SOCK_ERROR) {
+	if (::bind(_socket, addrName, addrLength) == SOCK_ERROR) {
 		throw std::runtime_error(std::format("Bind failed: {}", SOCKET_ERRNO));
 	}
 }
 
-void SocketGuard::listenSocket() {
+void SocketGuard::listen() {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot listen on an invalid socket");
 	}
-	if (listen(_socket, SOMAXCONN) == SOCK_ERROR) {
+	if (::listen(_socket, SOMAXCONN) == SOCK_ERROR) {
 		throw std::runtime_error(std::format("Listen failed: {}", SOCKET_ERRNO));
 	}
 }
@@ -78,7 +80,7 @@ void SocketGuard::setTimeout(size_t seconds) {
 #endif
 }
 
-SocketGuard SocketGuard::acceptSocket() {
+SocketGuard SocketGuard::accept() {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot accept on an invalid socket");
 	}
@@ -91,24 +93,30 @@ SocketGuard SocketGuard::acceptSocket() {
 	timeout.tv_sec = 1;
 	timeout.tv_usec = 0;
 
-	int ready = select(static_cast<int>(_socket + 1), &readSet, NULL, NULL, &timeout);
+#ifdef _WIN32
+	// On Windows, nfds is ignored by select(); passing 0 avoids truncating
+	// the SOCKET handle (UINT_PTR) to int on 64-bit builds.
+	int ready = ::select(0, &readSet, nullptr, nullptr, &timeout);
+#else
+	int ready = ::select(static_cast<int>(_socket) + 1, &readSet, nullptr, nullptr, &timeout);
+#endif
 
 	if (ready == 0) return SocketGuard(INVALID_HANDLE);
 	if (ready == SOCK_ERROR) throw std::runtime_error("select() failed");
 
-	SocketHandle clientSocket = accept(_socket, NULL, NULL);
+	SocketHandle clientSocket = ::accept(_socket, NULL, NULL);
 	if (clientSocket == INVALID_HANDLE) {
 		throw std::runtime_error(std::format("Accept failed: {}", SOCKET_ERRNO));
 	}
 	return SocketGuard(clientSocket);
 }
 
-int SocketGuard::recvData(char* buffer, int size) {
+int SocketGuard::recv(char* buffer, int size) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot recv on invalid socket");
 	}
 
-	int bytes = recv(_socket, buffer, size, 0);
+	int bytes = ::recv(_socket, buffer, size, 0);
 
 	if (bytes == SOCK_ERROR) {
 		int err = SOCKET_ERRNO;
@@ -129,6 +137,26 @@ int SocketGuard::recvData(char* buffer, int size) {
 	return bytes;
 }
 
-bool SocketGuard::isValid() {
+bool SocketGuard::isValid() const {
 	return _socket != INVALID_HANDLE;
+}
+
+std::string SocketGuard::peerAddress() const {
+	if (_socket == INVALID_HANDLE) return "unknown";
+	sockaddr_storage addr{};
+#ifdef _WIN32
+	int addrLen = sizeof(addr);
+#else
+	socklen_t addrLen = sizeof(addr);
+#endif
+	if (::getpeername(_socket, reinterpret_cast<sockaddr*>(&addr), &addrLen) != 0)
+		return "unknown";
+	char host[NI_MAXHOST]{};
+	char svc[NI_MAXSERV]{};
+	if (::getnameinfo(reinterpret_cast<const sockaddr*>(&addr),
+	                  static_cast<socklen_t>(addrLen),
+	                  host, NI_MAXHOST, svc, NI_MAXSERV,
+	                  NI_NUMERICHOST | NI_NUMERICSERV) != 0)
+		return "unknown";
+	return std::string(host) + ":" + svc;
 }

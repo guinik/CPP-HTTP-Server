@@ -29,6 +29,22 @@ TEST(Cors, AllowedOriginPassesThrough) {
     EXPECT_EQ(res.headers.at("Access-Control-Allow-Origin"), "https://example.com");
 }
 
+TEST(Cors, NoOriginHeaderPassesThrough) {
+    // Non-browser clients (curl, server-to-server) don't send Origin.
+    // CORS rules don't apply; the request must reach the handler.
+    CorsOptions opts{ {"https://example.com"}, {"GET"}, {} };
+    auto cors = makeCors(opts);
+
+    auto req = makeRequest("GET"); // no Origin header
+    HTTPResponse res;
+    bool nextCalled = false;
+
+    cors(req, res, [&nextCalled]() { nextCalled = true; });
+
+    EXPECT_TRUE(nextCalled);
+    EXPECT_NE(res.code, "403");
+}
+
 TEST(Cors, BlockedOriginReturns403) {
     CorsOptions opts{ {"https://example.com"}, {"GET"}, {} };
     auto cors = makeCors(opts);

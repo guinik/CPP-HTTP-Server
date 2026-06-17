@@ -4,7 +4,7 @@ A lightweight HTTP/1.1 server built from scratch in C++20. No frameworks, no dep
 
 ## Features
 
-- **Radix tree router** - O(path depth) matching with named parameters (`:id`), wildcard segments (`*`), and DFS backtracking for correct specificity
+- **Trie router** - O(path depth) matching with named parameters (`:id`), wildcard segments (`*`), and DFS backtracking for correct specificity
 - **HTTP/1.1 keep-alive** - persistent connections reused across multiple requests; respects `Connection: close` and HTTP/1.0 defaults
 - **Thread pool** - fixed-size pool sized to `hardware_concurrency()`; no unbounded thread spawning
 - **Middleware pipeline** - per-route chain with `Next` continuation; short-circuit by not calling `next()`; handler runs inside the chain so middleware captures accurate timing and response codes
@@ -26,9 +26,9 @@ main.cpp
   └── parses port from argv (default 2700)
   └── registers routes via addUserRoutes()
   └── creates ThreadPool (hardware_concurrency threads)
-  └── creates WSAHandler → calls run()
+  └── creates HttpServer → calls run()
 
-WSAHandler::run()
+HttpServer::run()
   └── sets up TCP listen socket
   └── accept loop → enqueues HandleConnection on ThreadPool
   └── polls g_running flag; exits on SIGINT
@@ -36,10 +36,10 @@ WSAHandler::run()
 HandleConnection()  [runs on thread pool]
   └── keep-alive loop:
         └── ReadRequestHead() → ReadRequestBody() → HTTPRequest
-        └── RadixTree::match() → node (populates req.head.params + queryParams)
+        └── RouteTrie::match() → node (populates req.head.params + queryParams)
         └── method lookup → 404 / 405 / applyRoute()
         └── applyRoute() → middleware chain → handler → HTTPResponse
-        └── HTTPResponseToRawString() → sendData()
+        └── HTTPResponseToRawString() → send()
         └── break if Connection: close
 ```
 
@@ -49,10 +49,10 @@ HandleConnection()  [runs on thread pool]
 include/
   AddrInfo.hpp       - RAII wrapper for getaddrinfo result
   SocketGuard.hpp    - RAII wrapper for socket handle (cross-platform)
-  WSA.hpp            - WSAHandler class + WinSocketGuard (Windows-only guard)
+  HttpServer.hpp     - HttpServer class + WinSocketGuard (Windows-only guard)
   HTTPRequest.hpp    - HTTPRequest / HTTPHead / HTTPBody structs + parser declarations
   HTTPResponse.hpp   - HTTPResponse struct
-  Router.hpp         - RadixTree, RadixTreeNode, Route, MiddleWare, Handler types
+  Router.hpp         - RouteTrie, RouteTrieNode, Route, MiddleWare, Handler types
   HandleConnection.hpp
   Cors.hpp           - makeCors() middleware factory
   Utils.hpp          - parseJson + requestLogger middleware
@@ -61,10 +61,10 @@ include/
 
 src/
   main.cpp              - entry point, port config, signal handler
-  WSA.cpp               - listen loop, thread pool dispatch
+  HttpServer.cpp        - listen loop, thread pool dispatch
   HandleConnection.cpp  - connection lifecycle, keep-alive loop, response serializer
   HTTPRequest.cpp       - raw bytes → HTTPRequest (head, body, query params)
-  Router.cpp            - RadixTree::add(), match(), dfsFindMatch(), applyRoute()
+  Router.cpp            - RouteTrie::add(), match(), dfsFindMatch(), applyRoute()
   UserRoutes.cpp        - user-defined route handlers
   ThreadPool.cpp        - fixed-size thread pool
   SocketGuard.cpp       - send, recv, bind, listen, accept wrappers
@@ -146,7 +146,7 @@ CI runs on every pull request via GitHub Actions on both **Windows** and **Ubunt
 Routes are registered in `src/UserRoutes.cpp`.
 
 ```cpp
-void addUserRoutes(RadixTree& router) {
+void addUserRoutes(RouteTrie& router) {
 
     // Basic route
     router.add("/users", "GET", {requestLogger, makeCors(corsOpts)},

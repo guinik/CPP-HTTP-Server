@@ -1,57 +1,28 @@
 #pragma once
-#include <functional>
-#include "HTTPRequest.hpp"
-#include "HTTPResponse.hpp"
-#include <optional>
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include "IRouter.hpp"
+#include "HTTPErrors.hpp"
+#include "StringUtils.hpp"
 
+enum class DFSMode { DIRECT, PARAM, WILDCARD };
 
-using Next = std::function<void()>;
-using MiddleWare = std::function<void(HTTPRequest&, HTTPResponse&, Next next)>;
-using Handler = std::function<void(const HTTPRequest&, HTTPResponse&)>;
-
-struct Route
-{
-	std::vector<MiddleWare> middleware;
-	Handler handler;
-
+struct RouteTrieNode {
+    std::unordered_map<std::string, std::unique_ptr<RouteTrieNode>> children;
+    std::unique_ptr<RouteTrieNode> paramChild;
+    std::unique_ptr<RouteTrieNode> wildcardChild;
+    std::string paramName;
+    std::unordered_map<std::string, Route> routeMap;
 };
 
-
-enum class DFSMode
-{
-	DIRECT,
-	PARAM,
-	WILDCARD
-};
-
-constexpr DFSMode allModes[] = {
-	DFSMode::DIRECT,
-	DFSMode::PARAM,
-	DFSMode::WILDCARD
-};
-
-struct RadixTreeNode {
-	std::unordered_map<std::string, std::unique_ptr<RadixTreeNode>> children;
-	std::unique_ptr<RadixTreeNode> paramChild;
-	std::unique_ptr<RadixTreeNode> wildcardChild;
-	std::string paramName;
-	std::unordered_map<std::string, Route> routeMap;
-
-};
-
-
-class RadixTree {
+class RouteTrie : public IRouter {
 public:
-	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler);
-	RadixTreeNode* match(HTTPRequest& request);
+    void add(const std::string& path, const std::string& method,
+             const std::vector<MiddleWare>& middleware, const Handler& handler);
+    RouteMatch match(const HTTPRequest& request) const override;
 
 private:
-	std::unique_ptr<RadixTreeNode> methodsRoot;
+    std::unique_ptr<RouteTrieNode> methodsRoot;
 };
-
-
-
-void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler);
-
-std::string stringDecode(std::string input);
