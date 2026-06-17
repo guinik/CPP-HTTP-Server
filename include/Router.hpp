@@ -10,6 +10,26 @@ public:
 	explicit BadRequestException(const std::string& msg) : std::runtime_error(msg) {}
 };
 
+class PayloadTooLargeException : public std::runtime_error {
+public:
+	explicit PayloadTooLargeException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+class RequestHeaderFieldsTooLargeException : public std::runtime_error {
+public:
+	explicit RequestHeaderFieldsTooLargeException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+class RequestUriTooLongException : public std::runtime_error {
+public:
+	explicit RequestUriTooLongException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+class HttpVersionNotSupportedException : public std::runtime_error {
+public:
+	explicit HttpVersionNotSupportedException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
 
 using Next = std::function<void()>;
 using MiddleWare = std::function<void(HTTPRequest&, HTTPResponse&, Next next)>;
@@ -44,6 +64,7 @@ struct RouteTrieNode {
 struct RouteMatch {
 	Route* route = nullptr;
 	bool pathFound = false;
+	std::vector<std::string> allowedMethods;
 };
 
 class RouteTrie {
@@ -57,6 +78,6 @@ private:
 
 
 
-void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler);
+void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, const Handler& handler);
 
 std::string stringDecode(std::string input);

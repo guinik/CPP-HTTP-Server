@@ -236,8 +236,8 @@ TEST_F(ConnectionTest, NegativeContentLengthReturns400) {
     EXPECT_NE(resp.find("HTTP/1.1 400"), std::string::npos);
 }
 
-TEST_F(ConnectionTest, OverflowContentLengthReturns500) {
-    // Value exceeds INT_MAX → stoi throws std::out_of_range → runtime_error → 500
+TEST_F(ConnectionTest, OversizedContentLengthReturns413) {
+    // Value is valid for stoull but exceeds the 10 MB body limit → 413
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
@@ -246,7 +246,7 @@ TEST_F(ConnectionTest, OverflowContentLengthReturns500) {
     rawClose(cli);
     t.join();
 
-    EXPECT_NE(resp.find("HTTP/1.1 500"), std::string::npos);
+    EXPECT_NE(resp.find("HTTP/1.1 413"), std::string::npos);
 }
 
 // ── keep-alive / connection lifecycle ─────────────────────────────────────────
@@ -312,6 +312,47 @@ TEST_F(ConnectionTest, ConnectionKeepAliveIsCaseInsensitive) {
 
     rawClose(cli);
     t.join();
+}
+
+// ── request-line validation ───────────────────────────────────────────────────
+
+TEST_F(ConnectionTest, UnsupportedHttpVersionReturns505) {
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli, "GET /ok HTTP/2.0\r\nConnection: close\r\n\r\n");
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 505"), std::string::npos);
+}
+
+TEST_F(ConnectionTest, UriTooLongReturns414) {
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    // 2049-char path — just over the 2048-byte limit.
+    std::string req = "GET /" + std::string(2048, 'a') + " HTTP/1.1\r\nConnection: close\r\n\r\n";
+    sendAll(cli, req);
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 414"), std::string::npos);
+}
+
+TEST_F(ConnectionTest, MethodWithInvalidCharReturns400) {
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    // Tab inside a method token is not a valid tchar → 400.
+    sendAll(cli, "G\tET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 400"), std::string::npos);
 }
 
 // ── path traversal ────────────────────────────────────────────────────────────

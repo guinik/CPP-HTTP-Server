@@ -69,7 +69,7 @@ public:
 	void bind(const sockaddr* addrName, int addrLength);
 	void listen();
 	void setTimeout(size_t seconds);
-	bool isValid();
+	bool isValid() const;
 	SocketGuard accept();
 	void send(const std::string& data);
 	int recv(char* buffer, int size);

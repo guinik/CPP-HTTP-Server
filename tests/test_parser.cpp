@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "HTTPRequest.hpp"
+#include "Router.hpp"
 #include "StringUtils.hpp"
 // ── splitByDelimiter ──────────────────────────────────────────────────────────
 
@@ -113,6 +114,51 @@ TEST(ParseHead, MultipleHeadersAllParsed) {
     EXPECT_EQ(head.headers.at("Content-Type"),   "application/json");
     EXPECT_EQ(head.headers.at("Content-Length"), "13");
     EXPECT_EQ(head.headers.at("Authorization"),  "Bearer tok");
+}
+
+// ── parseRawBytesBodyRequest ──────────────────────────────────────────────────
+
+// ── request-line validation ───────────────────────────────────────────────────
+
+TEST(ParseHead, Http10IsAccepted) {
+    std::string raw = "GET /ok HTTP/1.0\r\n\r\n";
+    auto head = parseRawBytesHeadRequest(raw);
+    EXPECT_EQ(head.version, "HTTP/1.0");
+}
+
+TEST(ParseHead, UnsupportedHttpVersionThrows505) {
+    std::string raw = "GET /path HTTP/2.0\r\n\r\n";
+    EXPECT_THROW(parseRawBytesHeadRequest(raw), HttpVersionNotSupportedException);
+}
+
+TEST(ParseHead, HttpVersionHTTP0_9Throws505) {
+    std::string raw = "GET /path HTTP/0.9\r\n\r\n";
+    EXPECT_THROW(parseRawBytesHeadRequest(raw), HttpVersionNotSupportedException);
+}
+
+TEST(ParseHead, MethodWithTabCharThrows400) {
+    // Tab is not a valid token char; must produce BadRequestException, not a 500.
+    std::string raw = "G\tET / HTTP/1.1\r\n\r\n";
+    EXPECT_THROW(parseRawBytesHeadRequest(raw), BadRequestException);
+}
+
+TEST(ParseHead, MethodWithColonThrows400) {
+    std::string raw = "GE:T / HTTP/1.1\r\n\r\n";
+    EXPECT_THROW(parseRawBytesHeadRequest(raw), BadRequestException);
+}
+
+TEST(ParseHead, UriTooLongThrows414) {
+    // 2049 chars — just over the 2048-byte limit.
+    std::string longPath = "/" + std::string(2048, 'a');
+    std::string raw = "GET " + longPath + " HTTP/1.1\r\n\r\n";
+    EXPECT_THROW(parseRawBytesHeadRequest(raw), RequestUriTooLongException);
+}
+
+TEST(ParseHead, UriAtLimitIsAccepted) {
+    // Exactly 2048 chars — must not throw.
+    std::string path = "/" + std::string(2047, 'a');
+    std::string raw = "GET " + path + " HTTP/1.1\r\n\r\n";
+    EXPECT_NO_THROW(parseRawBytesHeadRequest(raw));
 }
 
 // ── parseRawBytesBodyRequest ──────────────────────────────────────────────────

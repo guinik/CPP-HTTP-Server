@@ -26,12 +26,15 @@ void HttpServer::run() {
 		SocketGuard client = SafeListenSocket.accept();
 		if(client.isValid())
 		{
-			if (_activeConnections.load(std::memory_order_relaxed) >= kMaxConnections) {
+			// Atomically claim a slot: increment first, then check.
+			// This avoids the check-then-increment race where two threads both
+			// read N-1 and both pass the limit check before either increments.
+			if (++_activeConnections > kMaxConnections) {
+				--_activeConnections;
 				// SocketGuard destructor closes the socket → client gets a RST.
 				// The OS SYN backlog then provides natural back-pressure.
 				continue;
 			}
-			++_activeConnections;
 			_threadPool.enqueue(
 				[c = std::move(client), this]() mutable {
 					HandleConnection(std::move(c), _router, _running);

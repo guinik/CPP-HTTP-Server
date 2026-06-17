@@ -1,5 +1,6 @@
 #include "Router.hpp"
 #include "StringUtils.hpp"
+#include <algorithm>
 #include <optional>
 #include <memory>
 #include <vector>
@@ -54,6 +55,7 @@ void RouteTrie::add(const std::string& path, const std::string& method, const st
 	for (size_t i = 0; i < splittedVector.size(); i++)
 	{
 		std::string currStr = splittedVector[i];
+		if (currStr.empty()) continue;
 		if(currStr[0] == ':')
 		{
 			currStr = currStr.substr(1, currStr.length() - 1);
@@ -188,9 +190,9 @@ std::pair<RouteTrieNode*, CaseInsensitiveMap> dfsFindMatch(RouteTrieNode* initia
 		default:
 			return { currentNode, paramMap };
 	}
-	for (auto& mode : allModes)
+	for (auto& nextMode : allModes)
 	{
-		auto [dfsResultPtr, paramResult] = dfsFindMatch(currentNode, pathVector, mode, currentIndex + 1, paramMap);
+		auto [dfsResultPtr, paramResult] = dfsFindMatch(currentNode, pathVector, nextMode, currentIndex + 1, paramMap);
 		if (dfsResultPtr)
 		{
 			return { dfsResultPtr, paramResult };
@@ -228,6 +230,7 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody) {
 
 	std::string fullPath = pathAndQueryVector[0];
 	std::vector<std::string> splittedPath = splitByDelimiter(fullPath, "/");
+	splittedPath.erase(std::remove(splittedPath.begin(), splittedPath.end(), ""), splittedPath.end());
 
 	size_t initialIndex = 0;
 	CaseInsensitiveMap emptyMap{};
@@ -242,7 +245,10 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody) {
 			{
 				return { &it->second, true };
 			}
-			return { nullptr, true };
+			std::vector<std::string> allowed;
+			for (const auto& [method, _] : resultNodePtrDfs->routeMap)
+				allowed.push_back(method);
+			return { nullptr, true, std::move(allowed) };
 		}
 
 	}
@@ -252,13 +258,13 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody) {
 
 
 
-void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler)
+void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, const Handler& handler)
 {
 	std::function<void()> chain = [&]() {
 		handler(request, response);
 	};
 
-	for (int i = middlewareVector.size() - 1; i >= 0; --i) {
+	for (int i = static_cast<int>(middlewareVector.size()) - 1; i >= 0; --i) {
 		auto next = chain;
 		auto currentFunction = middlewareVector[i];
 		chain = [currentFunction, &request, &response, next]() {

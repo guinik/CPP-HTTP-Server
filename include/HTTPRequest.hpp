@@ -8,7 +8,7 @@ struct CaseInsensitiveHash
 	size_t operator()(const std::string& a) const{
 		std::string lower = a;
 		std::transform(lower.begin(), lower.end(), lower.begin(),
-			[](unsigned char c) { return std::tolower(c); });
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		return std::hash<std::string>{}(lower);
 	}
 };
@@ -28,10 +28,11 @@ struct HTTPHead {
 	std::string method;
 	std::string path;
 	std::string version;
+	std::string requestId;
 	////
 	CaseInsensitiveMap headers;
-	CaseInsensitiveMap params;
-	CaseInsensitiveMap queryParams;
+	std::unordered_map<std::string, std::string> params;
+	std::unordered_map<std::string, std::string> queryParams;
 };
 struct HTTPBody
 {

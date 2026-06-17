@@ -66,7 +66,7 @@ void addUserRoutes(RouteTrie& router)
                 return;
             }
 
-            std::ifstream file(requestedPath);
+            std::ifstream file(requestedPath, std::ios::binary);
 
             if (!file.is_open()) {
                 response.code = "404";
@@ -91,7 +91,7 @@ void addUserRoutes(RouteTrie& router)
             response.body = content;
         });
 
-    router.add("/users", "OPTIONS", { requestLogger, userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
+    router.add("/users", "OPTIONS", { requestLogger, userCorsMiddleWare}, [](const HTTPRequest&, HTTPResponse& response) -> void {
         response.code = "204";
         response.reason = "No Content";
         });

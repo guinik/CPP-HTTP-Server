@@ -49,10 +49,10 @@ TEST(Router, LiteralMatch) {
     tree.add("/users", "GET", {}, [&hit](const HTTPRequest&, HTTPResponse&) { hit = true; });
 
     auto req = makeRequest("GET", "/users");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_NE(route, nullptr);
-    EXPECT_TRUE(pathFound);
+    EXPECT_NE(match.route, nullptr);
+    EXPECT_TRUE(match.pathFound);
 }
 
 TEST(Router, NamedParamMatch) {
@@ -60,9 +60,9 @@ TEST(Router, NamedParamMatch) {
     tree.add("/users/:id", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users/42");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_NE(route, nullptr);
+    EXPECT_NE(match.route, nullptr);
     EXPECT_EQ(req.head.params.at("id"), "42");
 }
 
@@ -71,9 +71,9 @@ TEST(Router, WildcardMatch) {
     tree.add("/public/*", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/public/assets/style.css");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_NE(route, nullptr);
+    EXPECT_NE(match.route, nullptr);
     EXPECT_EQ(req.head.params.at("*"), "assets/style.css");
 }
 
@@ -85,11 +85,11 @@ TEST(Router, LiteralBeatsParam) {
     tree.add("/users/:id", "GET", {}, [&hitParam]  (const HTTPRequest&, HTTPResponse&) { hitParam   = true; });
 
     auto req = makeRequest("GET", "/users/me");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    ASSERT_NE(route, nullptr);
+    ASSERT_NE(match.route, nullptr);
     HTTPResponse res;
-    route->handler(req, res);
+    match.route->handler(req, res);
     EXPECT_TRUE(hitLiteral);
     EXPECT_FALSE(hitParam);
 }
@@ -99,10 +99,10 @@ TEST(Router, MethodNotAllowedReturnsPathFoundFlag) {
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("POST", "/users");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(route, nullptr);
-    EXPECT_TRUE(pathFound);
+    EXPECT_EQ(match.route, nullptr);
+    EXPECT_TRUE(match.pathFound);
 }
 
 TEST(Router, QueryParamsParsed) {
@@ -131,10 +131,10 @@ TEST(Router, NoMatchReturnsNullRoute) {
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/nonexistent");
-    auto [route, pathFound] = tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(route, nullptr);
-    EXPECT_FALSE(pathFound);
+    EXPECT_EQ(match.route, nullptr);
+    EXPECT_FALSE(match.pathFound);
 }
 
 // ── applyRoute ────────────────────────────────────────────────────────────────

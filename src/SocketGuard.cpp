@@ -131,6 +131,6 @@ int SocketGuard::recv(char* buffer, int size) {
 	return bytes;
 }
 
-bool SocketGuard::isValid() {
+bool SocketGuard::isValid() const {
 	return _socket != INVALID_HANDLE;
 }

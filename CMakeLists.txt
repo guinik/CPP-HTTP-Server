@@ -40,14 +40,24 @@ add_library(http_server_lib STATIC ${SERVER_SOURCES} ${SERVER_HEADERS})
 
 target_include_directories(http_server_lib PUBLIC include)
 
+if(MSVC)
+    target_compile_options(http_server_lib PRIVATE /W4 /WX)
+else()
+    target_compile_options(http_server_lib PRIVATE -Wall -Wextra -Werror)
+endif()
+
 if(WIN32)
     target_link_libraries(http_server_lib ws2_32)
 endif()
 
-
-
 add_executable(http_server src/main.cpp)
 target_link_libraries(http_server PRIVATE http_server_lib)
+
+if(MSVC)
+    target_compile_options(http_server PRIVATE /W4 /WX)
+else()
+    target_compile_options(http_server PRIVATE -Wall -Wextra -Werror)
+endif()
 
 
 
