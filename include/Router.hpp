@@ -52,3 +52,5 @@ public:
 
 
 void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler);
+
+std::string stringDecode(std::string input);

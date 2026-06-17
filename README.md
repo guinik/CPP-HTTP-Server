@@ -173,6 +173,41 @@ router.add("/api/data", "OPTIONS", {cors}, [](HTTPRequest&, HTTPResponse& res) {
 
 Use `allowedOrigins = {"*"}` to permit any origin.
 
+## HTTPS
+
+TLS is intentionally not handled by this server. The recommended approach is to front it with nginx as a reverse proxy, which terminates SSL and forwards plain HTTP to the server.
+
+Example nginx configuration:
+
+```nginx
+user  nobody;
+worker_processes  1;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    server {
+        listen 443 ssl;
+        server_name localhost;
+
+        ssl_certificate      C:/nginx-1.30.2/conf/server.crt;
+        ssl_certificate_key  C:/nginx-1.30.2/conf/server.key;
+
+        location / {
+            proxy_pass http://127.0.0.1:2700;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+}
+```
+
+With this setup nginx listens on 443, handles the TLS handshake, and proxies decrypted requests to the C++ server on port 2700. The `X-Forwarded-Proto: https` header lets your handlers know the original request was secure.
+
 ## Platform
 
 Windows only - depends on WinSock2 (`ws2_32`). No external dependencies beyond the Windows SDK and the vendored `json.hpp`.
@@ -180,5 +215,5 @@ Windows only - depends on WinSock2 (`ws2_32`). No external dependencies beyond t
 ## Known Limitations
 
 - **Single param or wildcard per node** - a path segment level can have either `:param` or `*`, not both
-- **No TLS** - HTTPS would require integrating a library such as OpenSSL or mbedTLS
+- **No TLS** - HTTPS is delegated to a reverse proxy (see [HTTPS](#https) section above)
 - **Windows only** - WinSock2 is not portable; a POSIX socket abstraction would be needed for Linux/macOS

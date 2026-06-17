@@ -5,7 +5,7 @@
 
 using json = nlohmann::json;
 
-MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
+inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
 	if (req.body.raw.empty())
 	{
@@ -33,7 +33,7 @@ MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
 
 
-MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next next) {
+inline MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 	auto start = std::chrono::steady_clock::now();
 
 	next();

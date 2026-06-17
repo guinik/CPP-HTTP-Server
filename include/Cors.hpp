@@ -7,7 +7,7 @@ struct CorsOptions{
     std::vector<std::string> allowedHeaders;
 };
 
-MiddleWare makeCors(CorsOptions corsOpt)
+inline MiddleWare makeCors(CorsOptions corsOpt)
 {
     return [corsOpt](HTTPRequest& req, HTTPResponse& res, Next next) {
 
