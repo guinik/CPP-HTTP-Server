@@ -2,7 +2,8 @@
 #include "Logger.hpp"
 #include <format>
 
-ThreadPool::ThreadPool(size_t numThreads) {
+ThreadPool::ThreadPool(size_t numThreads, size_t maxQueueDepth_)
+    : maxQueueDepth(maxQueueDepth_) {
 
 	for (size_t i{}; i < numThreads; i++) {
 		threads.emplace_back([this]() {

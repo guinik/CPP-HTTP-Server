@@ -1,39 +1,58 @@
 #include "UserRoutes.hpp"
 #include "Utils.hpp"
 #include "Cors.hpp"
+#include "Metrics.hpp"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
 
-CorsOptions userCors = {
-    .allowedOrigins = {"*"},
-    .allowedMethods = {"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-    .allowedHeaders = {"Content-Type", "Authorization"}
-};
-
-MiddleWare userCorsMiddleWare = makeCors(userCors);
-
-// Resolved once at startup so every request sees the same root regardless of
-// any later chdir(), and so canonical() failures surface immediately rather
-// than silently 404-ing every request.
-static const std::filesystem::path kPublicRoot = []() -> std::filesystem::path {
-    try {
-        return std::filesystem::canonical(std::filesystem::current_path() / "public");
-    } catch (const std::filesystem::filesystem_error&) {
-        return {};
-    }
-}();
-
-// Files larger than this are refused to prevent reading a multi-GB file into
-// a std::string and OOM-ing the process.
-static constexpr uintmax_t kMaxServedFileBytes = 10ULL * 1024 * 1024;
-
-void addUserRoutes(RouteTrie& router)
+void addUserRoutes(RouteTrie& router, Metrics& metrics)
 {
+    CorsOptions userCors = {
+        .allowedOrigins = {"http://localhost:3000", "http://localhost:8080"},
+        .allowedMethods = {"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        .allowedHeaders = {"Content-Type", "Authorization"}
+    };
+    MiddleWare userCorsMiddleWare = makeCors(userCors);
+
+    const std::filesystem::path kPublicRoot = []() -> std::filesystem::path {
+        try {
+            return std::filesystem::canonical(std::filesystem::current_path() / "public");
+        } catch (const std::filesystem::filesystem_error&) {
+            return {};
+        }
+    }();
+
+    constexpr uintmax_t kMaxServedFileBytes = 10ULL * 1024 * 1024;
+
+    router.add("/health", "GET", {},
+        [](const HTTPRequest&, HTTPResponse& res) {
+            res.code    = "200";
+            res.reason  = "OK";
+            res.headers["Content-Type"] = "application/json";
+            res.body    = R"({"status":"ok"})";
+        });
+
+    router.add("/metrics", "GET", {},
+        [&metrics](const HTTPRequest&, HTTPResponse& res) {
+            res.code    = "200";
+            res.reason  = "OK";
+            res.headers["Content-Type"] = "application/json";
+            res.body    = metrics.snapshot();
+        });
+
+    router.add("/metrics/prometheus", "GET", {},
+        [&metrics](const HTTPRequest&, HTTPResponse& res) {
+            res.code    = "200";
+            res.reason  = "OK";
+            res.headers["Content-Type"] = "text/plain; version=0.0.4; charset=utf-8";
+            res.body    = metrics.prometheusSnapshot();
+        });
+
     router.add("/users", "GET", { requestLogger, parseJson, userCorsMiddleWare },
         [](const HTTPRequest& req, HTTPResponse& response) -> void {
             response.code = "200";
-            response.reason = "All good";
+            response.reason = "OK";
             response.headers["Content-Type"] = "application/json";
             std::string page  = req.head.queryParams.count("page")  ? req.head.queryParams.at("page")  : "not set";
             std::string limit = req.head.queryParams.count("limit") ? req.head.queryParams.at("limit") : "not set";
@@ -50,11 +69,11 @@ void addUserRoutes(RouteTrie& router)
         [](const HTTPRequest& req, HTTPResponse& response) -> void {
             response.code   = "200";
             response.reason = "OK";
-            response.body   = "user id issss: " + req.head.params.at("id");
+            response.body   = "user id: " + req.head.params.at("id");
         });
 
     router.add("/public/*", "GET", { requestLogger, userCorsMiddleWare },
-        [](const HTTPRequest& req, HTTPResponse& response) -> void {
+        [kPublicRoot, kMaxServedFileBytes](const HTTPRequest& req, HTTPResponse& response) -> void {
             namespace fs = std::filesystem;
 
             if (kPublicRoot.empty()) {
@@ -83,7 +102,6 @@ void addUserRoutes(RouteTrie& router)
                 return;
             }
 
-            // Refuse files that would OOM the process if slurped into a string.
             std::error_code ec;
             auto fileSize = fs::file_size(requestedPath, ec);
             if (ec || fileSize > kMaxServedFileBytes) {
@@ -101,7 +119,7 @@ void addUserRoutes(RouteTrie& router)
             }
 
             std::string content((std::istreambuf_iterator<char>(file)),
-                                 std::istreambuf_iterator<char>());
+                                  std::istreambuf_iterator<char>());
 
             std::string pathStr     = requestedPath.string();
             std::string contentType = "text/plain";

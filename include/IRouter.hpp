@@ -4,5 +4,5 @@
 class IRouter {
 public:
     virtual ~IRouter() = default;
-    virtual RouteMatch match(HTTPRequest& request) = 0;
+    virtual RouteMatch match(const HTTPRequest& request) const = 0;
 };

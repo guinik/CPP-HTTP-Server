@@ -2,6 +2,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "HTTPRequest.hpp"
 #include "HTTPResponse.hpp"
 
@@ -16,7 +17,11 @@ struct Route {
 };
 
 struct RouteMatch {
-    Route*                   route = nullptr;
-    bool                     pathFound = false;
-    std::vector<std::string> allowedMethods;
+    const Route*                                 route = nullptr;
+    bool                                         pathFound = false;
+    std::vector<std::string>                     allowedMethods;
+    // Populated by RouteTrie::match(); applied to request.head by HandleConnection
+    // so that user handlers continue to read req.head.params / req.head.queryParams.
+    std::unordered_map<std::string, std::string> params;
+    std::unordered_map<std::string, std::string> queryParams;
 };

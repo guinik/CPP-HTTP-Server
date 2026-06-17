@@ -8,6 +8,8 @@
 
 #include "HandleConnection.hpp"
 #include "Router.hpp"
+#include "Metrics.hpp"
+#include "ServerConfig.hpp"
 
 // ── platform socket boilerplate ───────────────────────────────────────────────
 // SocketHandle / INVALID_HANDLE come from SocketGuard.hpp (via HandleConnection.hpp).
@@ -32,6 +34,7 @@ class ConnectionTest : public ::testing::Test {
 protected:
     RouteTrie        router;
     std::atomic_bool running{ true };
+    Metrics          metrics;
 
     void SetUp() override {
 #ifdef _WIN32
@@ -142,7 +145,7 @@ protected:
     // be joined by the caller (close clientSock first to trigger EOF).
     std::thread startWorker(SocketHandle serverSock) {
         return std::thread([this, serverSock]() {
-            HandleConnection(SocketGuard(serverSock), router, running);
+            HandleConnection(SocketGuard(serverSock), router, running, metrics);
         });
     }
 };
@@ -356,6 +359,132 @@ TEST_F(ConnectionTest, MethodWithInvalidCharReturns400) {
     EXPECT_NE(resp.find("HTTP/1.1 400"), std::string::npos);
 }
 
+// ── chunked transfer encoding ─────────────────────────────────────────────────
+
+TEST_F(ConnectionTest, ChunkedSingleChunkBodyIsEchoed) {
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli,
+        "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "5\r\n"
+        "hello\r\n"
+        "0\r\n"
+        "\r\n");
+
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 200"), std::string::npos);
+    EXPECT_NE(resp.find("hello"),        std::string::npos);
+}
+
+TEST_F(ConnectionTest, ChunkedMultipleChunksAreAssembled) {
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli,
+        "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "5\r\n"
+        "hello\r\n"
+        "6\r\n"
+        " world\r\n"
+        "0\r\n"
+        "\r\n");
+
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 200"),  std::string::npos);
+    EXPECT_NE(resp.find("hello world"),   std::string::npos);
+}
+
+TEST_F(ConnectionTest, ChunkedWithChunkExtensionIsHandled) {
+    // RFC 7230 §4.1.1: chunk extensions (;key=val) must be ignored.
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli,
+        "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "5;ext=ignored\r\n"
+        "hello\r\n"
+        "0\r\n"
+        "\r\n");
+
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 200"), std::string::npos);
+    EXPECT_NE(resp.find("hello"),        std::string::npos);
+}
+
+TEST_F(ConnectionTest, ChunkedBodyExceedingLimitReturns413) {
+    auto [srv, cli] = makeConnection();
+
+    // Use a tiny body limit so the test doesn't need to send megabytes.
+    auto t = std::thread([this, srv]() {
+        ServerConfig cfg;
+        cfg.maxBodyBytes = 10;
+        HandleConnection(SocketGuard(srv), router, running, metrics, cfg);
+    });
+
+    // Chunk declares 15 bytes — over the 10-byte cap.
+    sendAll(cli,
+        "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "f\r\n"
+        "123456789012345\r\n"
+        "0\r\n"
+        "\r\n");
+
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 413"), std::string::npos);
+}
+
+TEST_F(ConnectionTest, ChunkedMalformedSizeReturns400) {
+    // "gg" is not a valid hex number — server must reject with 400.
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli,
+        "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "gg\r\n"
+        "hello\r\n"
+        "0\r\n"
+        "\r\n");
+
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 400"), std::string::npos);
+}
+
 // ── path traversal ────────────────────────────────────────────────────────────
 
 class StaticFileTest : public ConnectionTest {
@@ -511,8 +640,9 @@ TEST_F(ConnectionTest, PerConnectionLimitClosesAfterMaxRequests) {
 
     // Use a short limit so the test runs in milliseconds.
     auto t = std::thread([this, srv]() {
-        HandleConnection(SocketGuard(srv), router, running,
-                         kLimit, std::chrono::seconds(10));
+        ServerConfig cfg;
+        cfg.maxRequestsPerConn = kLimit;
+        HandleConnection(SocketGuard(srv), router, running, metrics, cfg);
     });
 
     // All kLimit requests must succeed on the same keep-alive connection.
@@ -534,6 +664,30 @@ TEST_F(ConnectionTest, PerConnectionLimitClosesAfterMaxRequests) {
     t.join();
 }
 
+// ── HTTP/1.1 pipelining ───────────────────────────────────────────────────────
+
+TEST_F(ConnectionTest, PipelinedRequestsAreHandledCorrectly) {
+    // Both requests arrive in a single send() call before the server has had a
+    // chance to respond to the first.  Prior to the leftover fix, the second
+    // request's bytes were discarded after reading the first response, causing
+    // the connection to hang until SO_RCVTIMEO fired a 408.
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    // Two complete requests concatenated into one send.
+    sendAll(cli,
+        "GET /ok HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+
+    auto resp1 = readOneResponse(cli);
+    auto resp2 = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp1.find("HTTP/1.1 200"), std::string::npos) << "first pipelined response";
+    EXPECT_NE(resp2.find("HTTP/1.1 200"), std::string::npos) << "second pipelined response";
+}
+
 // ── Slowloris / header-read timeout ──────────────────────────────────────────
 
 TEST_F(ConnectionTest, SlowlorisTimeoutReturns408) {
@@ -541,8 +695,9 @@ TEST_F(ConnectionTest, SlowlorisTimeoutReturns408) {
 
     // Worker with a 2 s header deadline so the test completes quickly.
     auto t = std::thread([this, srv]() {
-        HandleConnection(SocketGuard(srv), router, running,
-                         1000, std::chrono::seconds(2));
+        ServerConfig cfg;
+        cfg.headerTimeout = std::chrono::seconds(2);
+        HandleConnection(SocketGuard(srv), router, running, metrics, cfg);
     });
 
     // Send a valid but incomplete header (no terminating \r\n\r\n).

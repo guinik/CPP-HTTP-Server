@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 
+using ParamMap = std::unordered_map<std::string, std::string>;
+
 static constexpr DFSMode allModes[] = {
     DFSMode::DIRECT,
     DFSMode::PARAM,
@@ -86,21 +88,14 @@ void RouteTrie::add(const std::string& path, const std::string& method,
 }
 
 
-static void mergeParams(HTTPRequest& request, const CaseInsensitiveMap& params)
-{
-    for (auto [key, value] : params)
-        request.head.params[key] = value;
-}
-
-
-static std::pair<RouteTrieNode*, CaseInsensitiveMap>
-dfsFindMatch(RouteTrieNode* initialNode, const std::vector<std::string>& pathVector,
-             const DFSMode& mode, size_t currentIndex, CaseInsensitiveMap paramMap)
+static std::pair<const RouteTrieNode*, ParamMap>
+dfsFindMatch(const RouteTrieNode* initialNode, const std::vector<std::string>& pathVector,
+             const DFSMode& mode, size_t currentIndex, ParamMap paramMap)
 {
     if (currentIndex == pathVector.size())
         return { initialNode, paramMap };
 
-    RouteTrieNode* currentNode = initialNode;
+    const RouteTrieNode* currentNode = initialNode;
     switch (mode)
     {
         case DFSMode::DIRECT:
@@ -152,14 +147,12 @@ dfsFindMatch(RouteTrieNode* initialNode, const std::vector<std::string>& pathVec
 }
 
 
-RouteMatch RouteTrie::match(HTTPRequest& requestWithBody)
+RouteMatch RouteTrie::match(const HTTPRequest& request) const
 {
-    auto& requestHead = requestWithBody.head;
     if (!methodsRoot) return {};
 
-    RouteTrieNode* methodHeadPtr = methodsRoot.get();
-
-    std::vector<std::string> pathAndQueryVector = splitByDelimiter(requestHead.path, "?");
+    ParamMap queryParams;
+    std::vector<std::string> pathAndQueryVector = splitByDelimiter(request.head.path, "?");
 
     if (pathAndQueryVector.size() > 1)
     {
@@ -169,7 +162,7 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody)
             std::string decodedString = stringDecode(param);
             std::vector<std::string> splitByEqual = splitByDelimiter(decodedString, "=");
             if (splitByEqual.size() == 2)
-                requestHead.queryParams[splitByEqual[0]] = splitByEqual[1];
+                queryParams[splitByEqual[0]] = splitByEqual[1];
         }
     }
 
@@ -177,25 +170,35 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody)
     std::vector<std::string> splittedPath = splitByDelimiter(fullPath, "/");
     splittedPath.erase(std::remove(splittedPath.begin(), splittedPath.end(), ""), splittedPath.end());
 
-    size_t initialIndex = 0;
-    CaseInsensitiveMap emptyMap{};
+    ParamMap emptyMap{};
     for (auto& mode : allModes)
     {
-        auto [resultNodePtrDfs, paramResult] = dfsFindMatch(methodHeadPtr, splittedPath, mode, initialIndex, emptyMap);
+        auto [resultNodePtrDfs, paramResult] = dfsFindMatch(methodsRoot.get(), splittedPath, mode, 0, emptyMap);
         if (resultNodePtrDfs)
         {
-            mergeParams(requestWithBody, paramResult);
-            auto it = resultNodePtrDfs->routeMap.find(requestWithBody.head.method);
+            auto it = resultNodePtrDfs->routeMap.find(request.head.method);
             if (it != resultNodePtrDfs->routeMap.end())
-                return { .route = &it->second, .pathFound = true, .allowedMethods = {} };
+            {
+                return RouteMatch{
+                    .route          = &it->second,
+                    .pathFound      = true,
+                    .allowedMethods = {},
+                    .params         = std::move(paramResult),
+                    .queryParams    = std::move(queryParams),
+                };
+            }
 
             std::vector<std::string> allowed;
             for (const auto& [method, _] : resultNodePtrDfs->routeMap)
                 allowed.push_back(method);
-            return { .route = nullptr, .pathFound = true, .allowedMethods = std::move(allowed) };
+            return RouteMatch{
+                .route          = nullptr,
+                .pathFound      = true,
+                .allowedMethods = std::move(allowed),
+                .params         = {},
+                .queryParams    = {},
+            };
         }
     }
     return {};
 }
-
-

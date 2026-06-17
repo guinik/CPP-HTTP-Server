@@ -21,9 +21,8 @@ class RouteTrie : public IRouter {
 public:
     void add(const std::string& path, const std::string& method,
              const std::vector<MiddleWare>& middleware, const Handler& handler);
-    RouteMatch match(HTTPRequest& request) override;
+    RouteMatch match(const HTTPRequest& request) const override;
 
 private:
     std::unique_ptr<RouteTrieNode> methodsRoot;
 };
-

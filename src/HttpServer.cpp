@@ -12,49 +12,62 @@ void HttpServer::run() {
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags    = AI_PASSIVE;
 
-    AddrInfoGuard SecureAddrInfo(NULL, _PORT.c_str(), &hints);
+    // A bindAddress of "0.0.0.0" maps to AI_PASSIVE behaviour (all interfaces).
+    // Any other value binds to that specific address only.
+    const char* node = (_config.bindAddress == "0.0.0.0") ? nullptr
+                                                           : _config.bindAddress.c_str();
+
+    AddrInfoGuard SecureAddrInfo(node, _config.port.c_str(), &hints);
     const addrinfo* info = SecureAddrInfo.get();
 
     SocketGuard SafeListenSocket;
     SafeListenSocket.create(info->ai_family, info->ai_socktype, info->ai_protocol);
     SafeListenSocket.bind(info->ai_addr, static_cast<int>(info->ai_addrlen));
     SafeListenSocket.listen();
-    Log::info(std::format("Server listening on port {}...", _PORT));
+    Log::info(std::format("Server listening on {}:{}...", _config.bindAddress, _config.port));
 
     while (_running) {
         SocketGuard client = SafeListenSocket.accept();
         if (!client.isValid()) continue;
 
-        // Atomically claim a slot: increment first, then check.
-        // This avoids the check-then-increment race where two threads both
-        // read N-1 and both pass the limit check before either increments.
-        if (++_activeConnections > kMaxConnections) {
-            --_activeConnections;
-            // SocketGuard destructor closes the socket → client gets a RST.
-            // The OS SYN backlog then provides natural back-pressure.
+        if (++_metrics.activeConnections > _config.maxConnections) {
+            --_metrics.activeConnections;
             continue;
         }
 
-        _threadPool.enqueue(
-            [c = std::move(client), this]() mutable {
-                HandleConnection(std::move(c), _router, _running);
-                --_activeConnections;
-            }
-        );
+        try {
+            _threadPool.enqueue(
+                [c = std::move(client), this]() mutable {
+                    // Decrement activeConnections on every exit path, including
+                    // exceptions thrown by HandleConnection (e.g. send failure).
+                    try {
+                        HandleConnection(std::move(c), _router, _running, _metrics, _config);
+                    } catch (const std::exception& e) {
+                        Log::error(std::format("[HandleConnection] threw: {}", e.what()));
+                    } catch (...) {
+                        Log::error("[HandleConnection] threw unknown exception");
+                    }
+                    { std::lock_guard lk(_drainMtx); --_metrics.activeConnections; }
+                    _drainCv.notify_one();
+                }
+            );
+        } catch (const std::runtime_error& e) {
+            // Queue full or pool stopping — close the socket and release the slot.
+            --_metrics.activeConnections;
+            Log::warn(std::format("Connection rejected: {}", e.what()));
+        }
     }
 
-    // Drain active connections up to the configured timeout so in-flight
-    // requests finish cleanly before the thread pool is torn down.
     Log::info("Accept loop stopped; waiting for active connections to drain...");
-    auto deadline = std::chrono::steady_clock::now() + _shutdownTimeout;
-    while (_activeConnections.load() > 0 &&
-           std::chrono::steady_clock::now() < deadline)
+    auto deadline = std::chrono::steady_clock::now() + _config.shutdownTimeout;
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::unique_lock lk(_drainMtx);
+        _drainCv.wait_until(lk, deadline,
+            [this] { return _metrics.activeConnections.load() == 0; });
     }
-    if (_activeConnections.load() > 0) {
+    if (_metrics.activeConnections.load() > 0) {
         Log::error(std::format("{} connection(s) still active after {}s shutdown timeout.",
-                   _activeConnections.load(), _shutdownTimeout.count()));
+                   _metrics.activeConnections.load(), _config.shutdownTimeout.count()));
     }
 
     Log::info("Server closed.");

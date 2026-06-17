@@ -6,14 +6,17 @@
 #include "HTTPSerializer.hpp"
 #include "HTTPErrors.hpp"
 #include "IRouter.hpp"
+#include "Metrics.hpp"
+#include "ServerConfig.hpp"
 
-void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& running,
-                      size_t               maxRequestsPerConnection = 1000,
-                      std::chrono::seconds headerReadTimeout        = std::chrono::seconds(10),
-                      std::chrono::seconds handlerTimeout           = std::chrono::seconds(30));
+void HandleConnection(SocketGuard socket, const IRouter& router, std::atomic_bool& running,
+                      Metrics& metrics,
+                      const ServerConfig& config = ServerConfig{});
 
-[[nodiscard]] std::pair<std::string, std::string> ReadRequestHead(
+[[nodiscard]] std::string ReadRequestHead(
     SocketGuard& socket,
+    std::string& leftover,
+    size_t       maxHeaderBytes,
     std::chrono::seconds headerTimeout = std::chrono::seconds(10));
 
 std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& leftover);

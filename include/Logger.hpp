@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <iostream>
 #include <mutex>
 #include <string_view>
@@ -8,12 +9,26 @@
 
 namespace Log {
 
+enum class Level { debug, info, warn, error };
+
+inline std::atomic<int>& levelAtom() {
+    static std::atomic<int> l{static_cast<int>(Level::info)};
+    return l;
+}
+
+inline void setLevel(Level l) {
+    levelAtom().store(static_cast<int>(l), std::memory_order_relaxed);
+}
+
+inline bool enabled(Level l) {
+    return static_cast<int>(l) >= levelAtom().load(std::memory_order_relaxed);
+}
+
 inline std::mutex& mutex() {
     static std::mutex m;
     return m;
 }
 
-// ISO 8601 UTC timestamp with millisecond precision.
 inline std::string timestamp() {
     auto now = std::chrono::system_clock::now();
     auto tt  = std::chrono::system_clock::to_time_t(now);
@@ -30,48 +45,64 @@ inline std::string timestamp() {
         tm.tm_hour, tm.tm_min, tm.tm_sec, static_cast<long long>(ms));
 }
 
-// Escape a string for embedding inside a JSON double-quoted value.
 inline std::string jsonStr(std::string_view s) {
     std::string out;
     out.reserve(s.size());
-    for (char c : s) {
+    for (unsigned char c : s) {
         switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
             case '\n': out += "\\n";  break;
             case '\r': out += "\\r";  break;
             case '\t': out += "\\t";  break;
-            default:   out += c;      break;
+            default:
+                if (c < 0x20)
+                    out += std::format("\\u{:04x}", static_cast<unsigned>(c));
+                else
+                    out += static_cast<char>(c);
+                break;
         }
     }
     return out;
 }
 
 inline void info(std::string_view msg) {
+    if (!enabled(Level::info)) return;
     std::lock_guard<std::mutex> lk(mutex());
     std::cout << "{\"ts\":\"" << timestamp() << "\",\"level\":\"INFO\",\"msg\":\""
               << jsonStr(msg) << "\"}\n";
 }
 
 inline void info(std::string_view requestId, std::string_view msg) {
+    if (!enabled(Level::info)) return;
     std::lock_guard<std::mutex> lk(mutex());
     std::cout << "{\"ts\":\"" << timestamp() << "\",\"level\":\"INFO\",\"req\":\""
               << requestId << "\",\"msg\":\"" << jsonStr(msg) << "\"}\n";
 }
 
+inline void warn(std::string_view msg) {
+    if (!enabled(Level::warn)) return;
+    std::lock_guard<std::mutex> lk(mutex());
+    std::cerr << "{\"ts\":\"" << timestamp() << "\",\"level\":\"WARN\",\"msg\":\""
+              << jsonStr(msg) << "\"}\n";
+}
+
 inline void warn(std::string_view requestId, std::string_view msg) {
+    if (!enabled(Level::warn)) return;
     std::lock_guard<std::mutex> lk(mutex());
     std::cerr << "{\"ts\":\"" << timestamp() << "\",\"level\":\"WARN\",\"req\":\""
               << requestId << "\",\"msg\":\"" << jsonStr(msg) << "\"}\n";
 }
 
 inline void error(std::string_view msg) {
+    if (!enabled(Level::error)) return;
     std::lock_guard<std::mutex> lk(mutex());
     std::cerr << "{\"ts\":\"" << timestamp() << "\",\"level\":\"ERROR\",\"msg\":\""
               << jsonStr(msg) << "\"}\n";
 }
 
 inline void error(std::string_view requestId, std::string_view msg) {
+    if (!enabled(Level::error)) return;
     std::lock_guard<std::mutex> lk(mutex());
     std::cerr << "{\"ts\":\"" << timestamp() << "\",\"level\":\"ERROR\",\"req\":\""
               << requestId << "\",\"msg\":\"" << jsonStr(msg) << "\"}\n";

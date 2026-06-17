@@ -80,7 +80,7 @@ TEST(Router, NamedParamMatch) {
     auto match = tree.match(req);
 
     EXPECT_NE(match.route, nullptr);
-    EXPECT_EQ(req.head.params.at("id"), "42");
+    EXPECT_EQ(match.params.at("id"), "42");
 }
 
 TEST(Router, WildcardMatch) {
@@ -91,7 +91,7 @@ TEST(Router, WildcardMatch) {
     auto match = tree.match(req);
 
     EXPECT_NE(match.route, nullptr);
-    EXPECT_EQ(req.head.params.at("*"), "assets/style.css");
+    EXPECT_EQ(match.params.at("*"), "assets/style.css");
 }
 
 TEST(Router, LiteralBeatsParam) {
@@ -127,10 +127,10 @@ TEST(Router, QueryParamsParsed) {
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users?page=2&limit=10");
-    tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(req.head.queryParams.at("page"),  "2");
-    EXPECT_EQ(req.head.queryParams.at("limit"), "10");
+    EXPECT_EQ(match.queryParams.at("page"),  "2");
+    EXPECT_EQ(match.queryParams.at("limit"), "10");
 }
 
 TEST(Router, QueryParamsUrlDecoded) {
@@ -138,9 +138,9 @@ TEST(Router, QueryParamsUrlDecoded) {
     tree.add("/search", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/search?q=hello%20world");
-    tree.match(req);
+    auto match = tree.match(req);
 
-    EXPECT_EQ(req.head.queryParams.at("q"), "hello world");
+    EXPECT_EQ(match.queryParams.at("q"), "hello world");
 }
 
 TEST(Router, DuplicateRegistrationThrows) {

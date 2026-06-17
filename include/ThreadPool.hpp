@@ -33,13 +33,18 @@ private:
 
 class ThreadPool {
 public:
-	ThreadPool(size_t numThreads);
+	explicit ThreadPool(size_t numThreads, size_t maxQueueDepth = 4096);
 	~ThreadPool();
 
+	// Throws std::runtime_error if the pool is stopping or the queue is full.
 	template <typename F>
 	void enqueue(F&& f) {
 		{
 			std::unique_lock<std::mutex> lock(queueMtx);
+			if (stop)
+				throw std::runtime_error("ThreadPool is stopping");
+			if (tasks.size() >= maxQueueDepth)
+				throw std::runtime_error("ThreadPool queue full");
 			tasks.emplace(std::forward<F>(f));
 		}
 		cv.notify_one();
@@ -50,5 +55,6 @@ private:
 	std::mutex queueMtx;
 	std::queue<Task> tasks;
 	std::condition_variable cv;
+	size_t maxQueueDepth;
 	bool stop = false;
 };

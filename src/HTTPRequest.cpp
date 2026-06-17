@@ -18,7 +18,22 @@ static bool isInvalidMethodChar(unsigned char c)
     }
 }
 
-HTTPHead parseRawBytesHeadRequest(std::string_view raw)
+// RFC 7230 §3.2.6 tchar: visible US-ASCII except delimiters.
+static bool isTokenChar(unsigned char c)
+{
+    if (c <= 0x20 || c == 0x7F) return false;
+    switch (c) {
+        case '(': case ')': case '<': case '>': case '@':
+        case ',': case ';': case ':': case '\\': case '"':
+        case '/': case '[': case ']': case '?': case '=':
+        case '{': case '}':
+            return false;
+        default:
+            return true;
+    }
+}
+
+HTTPHead parseRawBytesHeadRequest(std::string_view raw, size_t maxUriBytes)
 {
     auto lfPos = raw.find("\r\n");
     if (lfPos == std::string_view::npos)
@@ -46,8 +61,9 @@ HTTPHead parseRawBytesHeadRequest(std::string_view raw)
                 std::format("Invalid character in method: 0x{:02x}", static_cast<unsigned>(c)));
     }
 
-    if (path.size() > 2048)
-        throw RequestUriTooLongException("Request-URI exceeds 2048 bytes");
+    if (path.size() > maxUriBytes)
+        throw RequestUriTooLongException(
+            std::format("Request-URI exceeds {} bytes", maxUriBytes));
 
     if (version != "HTTP/1.0" && version != "HTTP/1.1")
         throw HttpVersionNotSupportedException(
@@ -67,9 +83,19 @@ HTTPHead parseRawBytesHeadRequest(std::string_view raw)
         if (colon == std::string_view::npos)
             throw BadRequestException("Malformed header: missing colon");
 
-        std::string_view key   = line.substr(0, colon);
-        std::string_view value = line.substr(colon + 1);
+        std::string_view key = line.substr(0, colon);
+        if (key.empty())
+            throw BadRequestException("Malformed header: empty field name");
 
+        // RFC 7230 §3.2: field-name must be a token.
+        for (unsigned char c : key) {
+            if (!isTokenChar(c))
+                throw BadRequestException(
+                    std::format("Invalid character in header name: 0x{:02x}",
+                                static_cast<unsigned>(c)));
+        }
+
+        std::string_view value = line.substr(colon + 1);
         auto start = value.find_first_not_of(" \t");
         value = (start != std::string_view::npos)
                     ? value.substr(start, value.find_last_not_of(" \t") - start + 1)

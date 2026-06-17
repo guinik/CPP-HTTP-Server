@@ -3,11 +3,15 @@
 #include <format>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+#include <condition_variable>
 #include "SocketGuard.hpp"
 #include "AddrInfo.hpp"
 #include "HandleConnection.hpp"
 #include "IRouter.hpp"
+#include "Metrics.hpp"
 #include "ThreadPool.hpp"
+#include "ServerConfig.hpp"
 
 #ifdef _WIN32
 class WinSocketGuard {
@@ -26,14 +30,11 @@ private:
 
 class HttpServer {
 public:
-    static constexpr size_t kMaxConnections = 1000;
-    static constexpr auto   kDefaultShutdownTimeout = std::chrono::seconds(5);
-
-    HttpServer(const std::string& PORT, IRouter& router, ThreadPool& threadPool,
-               std::atomic_bool& running,
-               std::chrono::seconds shutdownTimeout = kDefaultShutdownTimeout)
-        : _PORT(PORT), _router(router), _threadPool(threadPool),
-          _running(running), _shutdownTimeout(shutdownTimeout) {}
+    HttpServer(const IRouter& router, ThreadPool& threadPool,
+               std::atomic_bool& running, Metrics& metrics,
+               const ServerConfig& config = ServerConfig{})
+        : _config(config), _router(router),
+          _threadPool(threadPool), _running(running), _metrics(metrics) {}
 
     void run();
 
@@ -41,10 +42,12 @@ private:
 #ifdef _WIN32
     WinSocketGuard _winSocketInitializer;
 #endif
-    std::string          _PORT;
-    IRouter&             _router;
+    ServerConfig         _config;
+    const IRouter&       _router;
     ThreadPool&          _threadPool;
     std::atomic_bool&    _running;
-    std::chrono::seconds _shutdownTimeout;
-    std::atomic<size_t>  _activeConnections{ 0 };
+    Metrics&             _metrics;
+
+    std::mutex              _drainMtx;
+    std::condition_variable _drainCv;
 };

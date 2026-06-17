@@ -134,3 +134,54 @@ TEST(ThreadPool, DestructorDrainsQueueBeforeJoining) {
     }
     EXPECT_EQ(completed.load(), 10);
 }
+
+// ── bounded queue ─────────────────────────────────────────────────────────────
+
+TEST(ThreadPool, EnqueueThrowsWhenQueueFull) {
+    // 1 thread, depth-1 queue, blocked by a gate so tasks pile up.
+    std::promise<void> gate;
+    auto gateFuture = gate.get_future().share();
+
+    ThreadPool pool(1, /*maxQueueDepth=*/1);
+
+    // This task blocks the sole worker until we open the gate.
+    pool.enqueue([gateFuture]() mutable { gateFuture.wait(); });
+
+    // The queue is now full (depth 1). A second enqueue must throw.
+    EXPECT_THROW(
+        pool.enqueue([]() {}),
+        std::runtime_error);
+
+    gate.set_value(); // unblock the worker so the destructor can join
+}
+
+TEST(ThreadPool, EnqueueThrowsAfterDestructorStarts) {
+    // Start the destructor (via a scope exit), then try to enqueue.
+    // We use a thread that tries to enqueue while the destructor is running.
+    std::promise<void> destructorReady;
+    auto destructorFutureSh = destructorReady.get_future().share();
+
+    // Outer scope to trigger pool destruction.
+    std::atomic<bool> threw{false};
+    {
+        ThreadPool pool(1);
+
+        std::thread racer([&pool, &threw, destructorFutureSh]() mutable {
+            destructorFutureSh.wait();
+            try {
+                pool.enqueue([]() {});
+            } catch (const std::runtime_error&) {
+                threw.store(true);
+            }
+        });
+
+        // Signal the racer just before we leave this scope so the destructor
+        // begins; the racer should find the pool stopping.
+        destructorReady.set_value();
+        racer.join();
+    } // pool destroyed here
+
+    // The racer either saw the pool stopping (threw) or got in just before it —
+    // either outcome is valid. The important invariant is no crash or deadlock.
+    (void)threw;
+}

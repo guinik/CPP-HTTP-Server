@@ -34,6 +34,8 @@ set(SERVER_HEADERS
     include/ThreadPool.hpp
     include/StringUtils.hpp
     include/Logger.hpp
+    include/ServerConfig.hpp
+    include/Metrics.hpp
 )
 
 source_group("Sources" FILES ${SERVER_SOURCES})
