@@ -66,6 +66,11 @@ src/
   UserRoutes.cpp        - user-defined route handlers
   ThreadPool.cpp        - fixed-size thread pool
   SocketGuard.cpp       - send, recv, bind, listen, accept wrappers
+
+tests/
+  test_parser.cpp     - unit tests for HTTP request parsing and splitByDelimiter
+  test_router.cpp     - unit tests for URL decoding, radix tree matching, and applyRoute
+  test_middleware.cpp - unit tests for CORS and parseJson middleware
 ```
 
 ## Building
@@ -87,6 +92,26 @@ cmake --build build
 ```
 
 Press CTRL-C to shut down gracefully.
+
+## Testing
+
+Tests are built alongside the server and use [GoogleTest](https://github.com/google/googletest), fetched automatically by CMake.
+
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The test suite covers the units that contain pure logic and have no socket or OS coupling:
+
+| Suite | What it tests |
+|---|---|
+| `SplitByDelimiter`, `ParseHead`, `ParseBody` | HTTP request parser — raw bytes to struct |
+| `StringDecode`, `Router`, `ApplyRoute` | URL decoding, radix tree matching, middleware chain |
+| `Cors`, `ParseJsonMiddleware` | CORS origin validation and JSON body parsing |
+
+CI runs these tests automatically on every pull request via GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Defining Routes
 
