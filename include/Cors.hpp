@@ -1,5 +1,5 @@
 #pragma once
-#include "Router.hpp"
+#include "RouteTypes.hpp"
 
 struct CorsOptions{
     std::vector<std::string> allowedOrigins;

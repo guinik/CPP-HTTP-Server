@@ -24,6 +24,9 @@ set(SERVER_HEADERS
     include/HandleConnection.hpp
     include/HTTPRequest.hpp
     include/HTTPResponse.hpp
+    include/HTTPErrors.hpp
+    include/IRouter.hpp
+    include/RouteTypes.hpp
     include/Router.hpp
     include/UserRoutes.hpp
     include/Utils.hpp

@@ -134,3 +134,23 @@ int SocketGuard::recv(char* buffer, int size) {
 bool SocketGuard::isValid() const {
 	return _socket != INVALID_HANDLE;
 }
+
+std::string SocketGuard::peerAddress() const {
+	if (_socket == INVALID_HANDLE) return "unknown";
+	sockaddr_storage addr{};
+#ifdef _WIN32
+	int addrLen = sizeof(addr);
+#else
+	socklen_t addrLen = sizeof(addr);
+#endif
+	if (::getpeername(_socket, reinterpret_cast<sockaddr*>(&addr), &addrLen) != 0)
+		return "unknown";
+	char host[NI_MAXHOST]{};
+	char svc[NI_MAXSERV]{};
+	if (::getnameinfo(reinterpret_cast<const sockaddr*>(&addr),
+	                  static_cast<socklen_t>(addrLen),
+	                  host, NI_MAXHOST, svc, NI_MAXSERV,
+	                  NI_NUMERICHOST | NI_NUMERICSERV) != 0)
+		return "unknown";
+	return std::string(host) + ":" + svc;
+}

@@ -1,5 +1,5 @@
 #include "HTTPRequest.hpp"
-#include "Router.hpp"
+#include "HTTPErrors.hpp"
 #include "StringUtils.hpp"
 #include <format>
 #include <stdexcept>

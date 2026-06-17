@@ -1,83 +1,29 @@
 #pragma once
-#include <functional>
 #include <memory>
-#include <stdexcept>
-#include "HTTPRequest.hpp"
-#include "HTTPResponse.hpp"
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include "IRouter.hpp"
+#include "HTTPErrors.hpp"
+#include "StringUtils.hpp"
 
-class BadRequestException : public std::runtime_error {
-public:
-	explicit BadRequestException(const std::string& msg) : std::runtime_error(msg) {}
-};
-
-class PayloadTooLargeException : public std::runtime_error {
-public:
-	explicit PayloadTooLargeException(const std::string& msg) : std::runtime_error(msg) {}
-};
-
-class RequestHeaderFieldsTooLargeException : public std::runtime_error {
-public:
-	explicit RequestHeaderFieldsTooLargeException(const std::string& msg) : std::runtime_error(msg) {}
-};
-
-class RequestUriTooLongException : public std::runtime_error {
-public:
-	explicit RequestUriTooLongException(const std::string& msg) : std::runtime_error(msg) {}
-};
-
-class HttpVersionNotSupportedException : public std::runtime_error {
-public:
-	explicit HttpVersionNotSupportedException(const std::string& msg) : std::runtime_error(msg) {}
-};
-
-
-using Next = std::function<void()>;
-using MiddleWare = std::function<void(HTTPRequest&, HTTPResponse&, Next next)>;
-using Handler = std::function<void(const HTTPRequest&, HTTPResponse&)>;
-
-struct Route
-{
-	std::vector<MiddleWare> middleware;
-	Handler handler;
-
-};
-
-
-enum class DFSMode
-{
-	DIRECT,
-	PARAM,
-	WILDCARD
-};
-
+enum class DFSMode { DIRECT, PARAM, WILDCARD };
 
 struct RouteTrieNode {
-	std::unordered_map<std::string, std::unique_ptr<RouteTrieNode>> children;
-	std::unique_ptr<RouteTrieNode> paramChild;
-	std::unique_ptr<RouteTrieNode> wildcardChild;
-	std::string paramName;
-	std::unordered_map<std::string, Route> routeMap;
-
+    std::unordered_map<std::string, std::unique_ptr<RouteTrieNode>> children;
+    std::unique_ptr<RouteTrieNode> paramChild;
+    std::unique_ptr<RouteTrieNode> wildcardChild;
+    std::string paramName;
+    std::unordered_map<std::string, Route> routeMap;
 };
 
-
-struct RouteMatch {
-	Route* route = nullptr;
-	bool pathFound = false;
-	std::vector<std::string> allowedMethods;
-};
-
-class RouteTrie {
+class RouteTrie : public IRouter {
 public:
-	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler);
-	RouteMatch match(HTTPRequest& request);
+    void add(const std::string& path, const std::string& method,
+             const std::vector<MiddleWare>& middleware, const Handler& handler);
+    RouteMatch match(HTTPRequest& request) override;
 
 private:
-	std::unique_ptr<RouteTrieNode> methodsRoot;
+    std::unique_ptr<RouteTrieNode> methodsRoot;
 };
 
-
-
-void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, const Handler& handler);
-
-std::string stringDecode(std::string input);

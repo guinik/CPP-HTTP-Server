@@ -3,6 +3,23 @@
 #include "HTTPRequest.hpp"
 #include "HTTPResponse.hpp"
 
+// Local test utility: compose and run a middleware chain in isolation.
+static void applyRoute(const std::vector<MiddleWare>& middleware,
+                       HTTPRequest& request, HTTPResponse& response,
+                       const Handler& handler)
+{
+    std::function<void(HTTPRequest&, HTTPResponse&)> chain =
+        [&handler](HTTPRequest& req, HTTPResponse& res) { handler(req, res); };
+    for (int i = static_cast<int>(middleware.size()) - 1; i >= 0; --i) {
+        auto next = chain;
+        auto mw   = middleware[i];
+        chain = [mw, next](HTTPRequest& req, HTTPResponse& res) {
+            mw(req, res, [&req, &res, &next]() { next(req, res); });
+        };
+    }
+    chain(request, response);
+}
+
 // ── stringDecode ──────────────────────────────────────────────────────────────
 
 TEST(StringDecode, PercentEncodedSpace) {
@@ -89,7 +106,7 @@ TEST(Router, LiteralBeatsParam) {
 
     ASSERT_NE(match.route, nullptr);
     HTTPResponse res;
-    match.route->handler(req, res);
+    match.route->composedChain(req, res);
     EXPECT_TRUE(hitLiteral);
     EXPECT_FALSE(hitParam);
 }

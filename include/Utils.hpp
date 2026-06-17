@@ -1,7 +1,7 @@
 #pragma once
 #include <chrono>
 #include <format>
-#include "Router.hpp"
+#include "RouteTypes.hpp"
 #include "Logger.hpp"
 
 inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {

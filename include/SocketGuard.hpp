@@ -70,6 +70,7 @@ public:
 	void listen();
 	void setTimeout(size_t seconds);
 	bool isValid() const;
+	std::string peerAddress() const;
 	SocketGuard accept();
 	void send(const std::string& data);
 	int recv(char* buffer, int size);
