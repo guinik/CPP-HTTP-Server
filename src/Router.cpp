@@ -31,7 +31,6 @@ std::string stringDecode(std::string input)
 
 void RadixTree::add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler)
 {
-	// first we will split by / 
 	std::vector<std::string> splittedVector = splitByDelimiter(path, "/");
 
 	if (!methodsRoot) {
@@ -40,7 +39,7 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 
 	RadixTreeNode* currentNodePtr = methodsRoot.get();
 
-	for (int i = 0; i < splittedVector.size(); i++)
+	for (size_t i = 0; i < splittedVector.size(); i++)
 	{
 		std::string currStr = splittedVector[i];
 		if(currStr[0] == ':')
@@ -81,7 +80,7 @@ void RadixTree::add(const std::string& path, const std::string& method, const st
 	auto it = currentNodePtr->routeMap.find(method);
 	if (it != currentNodePtr->routeMap.end()) 
 	{
-		throw std::format("Already registered");
+		throw std::runtime_error("Already registered");
 	}
 	else 
 	{
@@ -238,24 +237,18 @@ RadixTreeNode* RadixTree::match(HTTPRequest& requestWithBody) {
 
 void applyRoute(const std::vector<MiddleWare>& middlewareVector, HTTPRequest& request, HTTPResponse& response, Handler& handler)
 {
-	std::function<void()> chain = [](){};
-	if (!middlewareVector.empty()) 
-	{
-	
-		for (int i = middlewareVector.size() - 1; i >= 0 && !middlewareVector.empty(); --i) {
-
-			auto next = chain;
-			auto currentFunction = middlewareVector[i];
-
-			chain = [currentFunction, &request, &response, next]() {
-				currentFunction(request, response, next);
-			};
-		};
-
-	}
-	chain();
-	if (response.code.empty()) {
+	std::function<void()> chain = [&]() {
 		handler(request, response);
+	};
+
+	for (int i = middlewareVector.size() - 1; i >= 0; --i) {
+		auto next = chain;
+		auto currentFunction = middlewareVector[i];
+		chain = [currentFunction, &request, &response, next]() {
+			currentFunction(request, response, next);
+		};
 	}
+
+	chain();
 }
 

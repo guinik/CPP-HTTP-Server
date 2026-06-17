@@ -43,10 +43,11 @@ struct RadixTreeNode {
 
 class RadixTree {
 public:
-	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware ,const Handler& handler); // "GET /users/:id" its our working idea
+	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler);
 	RadixTreeNode* match(HTTPRequest& request);
-	std::unique_ptr<RadixTreeNode> methodsRoot; //method to Root
 
+private:
+	std::unique_ptr<RadixTreeNode> methodsRoot;
 };
 
 

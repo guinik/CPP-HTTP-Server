@@ -1,81 +1,86 @@
-
 #include "SocketGuard.hpp"
 #include <iostream>
+
+#ifdef _WIN32
+    #define SOCKET_ERRNO WSAGetLastError()
+    #define SOCK_CLOSE(s) closesocket(s)
+    #define SOCK_ERROR SOCKET_ERROR
+#else
+    #define SOCKET_ERRNO errno
+    #define SOCK_CLOSE(s) close(s)
+    #define SOCK_ERROR -1
+#endif
+
 void SocketGuard::sendData(const std::string& data) {
-	if (_socket == INVALID_SOCKET) {
+	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot send on invalid socket");
 	}
 
-
 	size_t totalSent{ 0 };
-
-	while ( totalSent < data.size())
-	{
+	while (totalSent < data.size()) {
 		int result = send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
 
-		if (result == SOCKET_ERROR) {
-
-			int err = WSAGetLastError();
-			if (err == WSAECONNRESET || err == WSAECONNABORTED) {
-				return; // client disconnected mid-send, not fatal
-			}
-
-			throw std::runtime_error(
-				std::format("Send failed: {}", WSAGetLastError())
-			);
+		if (result == SOCK_ERROR) {
+			int err = SOCKET_ERRNO;
+#ifdef _WIN32
+			if (err == WSAECONNRESET || err == WSAECONNABORTED) return;
+#else
+			if (err == ECONNRESET || err == EPIPE) return;
+#endif
+			throw std::runtime_error(std::format("Send failed: {}", err));
 		}
 
-
 		totalSent += result;
-	}	
+	}
 }
 
 void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
-	if (_socket != INVALID_SOCKET) {
-		closesocket(_socket);
+	if (_socket != INVALID_HANDLE) {
+		SOCK_CLOSE(_socket);
 	}
 	_socket = socket(addrFamily, addrType, addrProtocol);
-	if (_socket == INVALID_SOCKET) {
-		throw std::runtime_error(std::format("Invalid Listen Socket. Configuration Might be Failing. : {}", WSAGetLastError()));
+	if (_socket == INVALID_HANDLE) {
+		throw std::runtime_error(std::format("Invalid Listen Socket: {}", SOCKET_ERRNO));
 	}
-
 }
-void SocketGuard::bindSocket(const sockaddr* addrName, int addrLength) {
-	if (_socket == INVALID_SOCKET) {
-		throw std::runtime_error(std::format("Can not bind an invalid socket, have you created the Socket?"));
-	}
-	int iResult;
-	iResult = bind(_socket, addrName, addrLength);
-	if (iResult == SOCKET_ERROR) {
-		throw std::runtime_error(std::format("Bind Failed : {}", WSAGetLastError()));
-	}
 
+void SocketGuard::bindSocket(const sockaddr* addrName, int addrLength) {
+	if (_socket == INVALID_HANDLE) {
+		throw std::runtime_error("Cannot bind an invalid socket");
+	}
+	if (bind(_socket, addrName, addrLength) == SOCK_ERROR) {
+		throw std::runtime_error(std::format("Bind failed: {}", SOCKET_ERRNO));
+	}
 }
 
 void SocketGuard::listenSocket() {
-	if (_socket == INVALID_SOCKET) {
-		throw std::runtime_error(std::format("Can not bind an invalid socket, have you created the Socket?."));
+	if (_socket == INVALID_HANDLE) {
+		throw std::runtime_error("Cannot listen on an invalid socket");
 	}
-
-	if (listen(_socket, SOMAXCONN) == SOCKET_ERROR) {
-		throw std::runtime_error(std::format("Listen Failed : {}", WSAGetLastError()));
+	if (listen(_socket, SOMAXCONN) == SOCK_ERROR) {
+		throw std::runtime_error(std::format("Listen failed: {}", SOCKET_ERRNO));
 	}
 }
 
-void SocketGuard::setTimeout(size_t seconds)
-{
+void SocketGuard::setTimeout(size_t seconds) {
+#ifdef _WIN32
 	DWORD msTime = static_cast<DWORD>(seconds * 1000);
-	int iResult;
-	iResult = setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&msTime, sizeof(msTime) );
-	if (iResult == SOCKET_ERROR) {
-		throw std::runtime_error(std::format("Set Timeout Failed : {}", WSAGetLastError()));
+	if (setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&msTime, sizeof(msTime)) == SOCK_ERROR) {
+		throw std::runtime_error(std::format("Set timeout failed: {}", SOCKET_ERRNO));
 	}
+#else
+	struct timeval tv{};
+	tv.tv_sec = static_cast<long>(seconds);
+	tv.tv_usec = 0;
+	if (setsockopt(_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == SOCK_ERROR) {
+		throw std::runtime_error(std::format("Set timeout failed: {}", SOCKET_ERRNO));
+	}
+#endif
 }
-
 
 SocketGuard SocketGuard::acceptSocket() {
-	if (_socket == INVALID_SOCKET) {
-		throw std::runtime_error(std::format("Can not accept an invalid socket, have you created the Socket?"));
+	if (_socket == INVALID_HANDLE) {
+		throw std::runtime_error("Cannot accept on an invalid socket");
 	}
 
 	fd_set readSet;
@@ -86,56 +91,44 @@ SocketGuard SocketGuard::acceptSocket() {
 	timeout.tv_sec = 1;
 	timeout.tv_usec = 0;
 
-	int ready = select(0, &readSet, NULL, NULL, &timeout);
+	int ready = select(static_cast<int>(_socket + 1), &readSet, NULL, NULL, &timeout);
 
-	if (ready == 0)
-	{
-		return SocketGuard(INVALID_SOCKET);
-	}
-	if (ready == SOCKET_ERROR)
-	{
-		throw std::runtime_error("SELECT FAILED");
-	}
+	if (ready == 0) return SocketGuard(INVALID_HANDLE);
+	if (ready == SOCK_ERROR) throw std::runtime_error("select() failed");
 
-	SOCKET clientSocket = accept(_socket, NULL, NULL);
-
-	if (clientSocket == INVALID_SOCKET) {
-		int error = WSAGetLastError();
-		throw std::runtime_error(std::format("Accept Failed : {}", WSAGetLastError()));
+	SocketHandle clientSocket = accept(_socket, NULL, NULL);
+	if (clientSocket == INVALID_HANDLE) {
+		throw std::runtime_error(std::format("Accept failed: {}", SOCKET_ERRNO));
 	}
 	return SocketGuard(clientSocket);
 }
 
-
 int SocketGuard::recvData(char* buffer, int size) {
-	if (_socket == INVALID_SOCKET) {
+	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot recv on invalid socket");
 	}
 
 	int bytes = recv(_socket, buffer, size, 0);
 
-	if (bytes == SOCKET_ERROR) {
-		
-		int err = WSAGetLastError();
-		if (err == WSAECONNRESET || err == WSAECONNABORTED || err == WSAESHUTDOWN || err == WSAETIMEDOUT) {
+	if (bytes == SOCK_ERROR) {
+		int err = SOCKET_ERRNO;
+#ifdef _WIN32
+		if (err == WSAECONNRESET || err == WSAECONNABORTED || err == WSAESHUTDOWN || err == WSAETIMEDOUT)
+#else
+		if (err == ECONNRESET || err == ENOTCONN || err == ETIMEDOUT || err == EAGAIN)
+#endif
 			throw SocketDisconnectException(std::format("Client disconnected: {}", err));
-		}
 
-		throw SocketBaseError(
-			std::format("Recv failed: {}", err)
-		);
-
+		throw SocketBaseError(std::format("Recv failed: {}", err));
 	}
 
-	if(bytes  == 0)
-	{
-		throw SocketDisconnectException(std::format("Client disconnected: No bytes recieved"));
+	if (bytes == 0) {
+		throw SocketDisconnectException("Client disconnected: connection closed");
 	}
 
 	return bytes;
 }
 
-bool SocketGuard::isValid() 
-{
-	return _socket != INVALID_SOCKET;
-};
+bool SocketGuard::isValid() {
+	return _socket != INVALID_HANDLE;
+}

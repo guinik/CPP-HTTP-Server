@@ -88,20 +88,17 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 
 			if(routePointer)
 			{
-				// route finded but method not checked
 				auto it = routePointer->routeMap.find(request.head.method);
-
 
 				if (it != routePointer->routeMap.end())
 				{
-					// matched method
 					applyRoute(it->second.middleware, request, response, it->second.handler);
 				}
 				else
 				{
 					response.code = "405";
 					response.version = "HTTP/1.1";
-					response.reason = "Path not found";
+					response.reason = "Method Not Allowed";
 				}
 
 			
@@ -205,7 +202,11 @@ void addTimeHeader(HTTPResponse& response)
 	auto now = std::chrono::system_clock::now();
 	auto time = std::chrono::system_clock::to_time_t(now);
 	std::tm tm{};
+#ifdef _WIN32
 	gmtime_s(&tm, &time);
+#else
+	gmtime_r(&time, &tm);
+#endif
 	char buf[64];
 	std::strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
 	response.headers["Date"] = buf;
