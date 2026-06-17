@@ -93,7 +93,13 @@ SocketGuard SocketGuard::accept() {
 	timeout.tv_sec = 1;
 	timeout.tv_usec = 0;
 
-	int ready = select(static_cast<int>(_socket + 1), &readSet, NULL, NULL, &timeout);
+#ifdef _WIN32
+	// On Windows, nfds is ignored by select(); passing 0 avoids truncating
+	// the SOCKET handle (UINT_PTR) to int on 64-bit builds.
+	int ready = ::select(0, &readSet, nullptr, nullptr, &timeout);
+#else
+	int ready = ::select(static_cast<int>(_socket) + 1, &readSet, nullptr, nullptr, &timeout);
+#endif
 
 	if (ready == 0) return SocketGuard(INVALID_HANDLE);
 	if (ready == SOCK_ERROR) throw std::runtime_error("select() failed");

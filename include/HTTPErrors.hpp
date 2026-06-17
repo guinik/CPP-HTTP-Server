@@ -26,3 +26,8 @@ class HttpVersionNotSupportedException : public std::runtime_error {
 public:
     explicit HttpVersionNotSupportedException(const std::string& msg) : std::runtime_error(msg) {}
 };
+
+class RequestTimeoutException : public std::runtime_error {
+public:
+    explicit RequestTimeoutException(const std::string& msg) : std::runtime_error(msg) {}
+};

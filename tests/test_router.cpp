@@ -143,6 +143,26 @@ TEST(Router, QueryParamsUrlDecoded) {
     EXPECT_EQ(req.head.queryParams.at("q"), "hello world");
 }
 
+TEST(Router, DuplicateRegistrationThrows) {
+    RouteTrie tree;
+    tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
+    EXPECT_THROW(
+        tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {}),
+        std::runtime_error
+    );
+}
+
+TEST(Router, DuplicateMethodOnSamePathThrows) {
+    // Two different methods on the same path are fine; duplicate method is not.
+    RouteTrie tree;
+    tree.add("/users", "GET",  {}, [](const HTTPRequest&, HTTPResponse&) {});
+    tree.add("/users", "POST", {}, [](const HTTPRequest&, HTTPResponse&) {});
+    EXPECT_THROW(
+        tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {}),
+        std::runtime_error
+    );
+}
+
 TEST(Router, NoMatchReturnsNullRoute) {
     RouteTrie tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});

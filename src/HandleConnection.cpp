@@ -41,8 +41,6 @@ bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
 
 static std::string jsonError(const std::string& msg)
 {
-    // Messages are controlled internal strings; avoid pulling in a JSON
-    // dependency here by escaping the handful of characters that matter.
     std::string safe;
     for (char c : msg) {
         if (c == '"')       safe += "\\\"";
@@ -52,14 +50,14 @@ static std::string jsonError(const std::string& msg)
     return R"({"error":")" + safe + R"("})";
 }
 
-void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& running)
+void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& running,
+                      size_t maxRequestsPerConnection, std::chrono::seconds headerReadTimeout)
 {
-    // 1 s recv timeout: a blocked recv wakes within 1 s so the loop can
-    // re-evaluate `running` after a shutdown signal.
     socket.setTimeout(1);
 
     Log::info(std::format("Connection from {}", socket.peerAddress()));
 
+    size_t requestCount = 0;
     while (socket.isValid() && running)
     {
         HTTPResponse response;
@@ -67,7 +65,7 @@ void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& run
         std::string requestId = std::format("{:08x}", ++s_requestCounter);
 
         try {
-            auto [requestBytes, leftover] = ReadRequestHead(socket);
+            auto [requestBytes, leftover] = ReadRequestHead(socket, headerReadTimeout);
 
             HTTPHead head = parseRawBytesHeadRequest(requestBytes);
             size_t bodyBytes{ 0 };
@@ -173,6 +171,14 @@ void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& run
             response.headers["Content-Type"]  = "application/json";
             response.headers["Connection"]    = "close";
         }
+        catch (const RequestTimeoutException& e) {
+            Log::error(requestId, std::format("Request timeout: {}", e.what()));
+            response.code   = "408";
+            response.reason = "Request Timeout";
+            response.body   = jsonError(e.what());
+            response.headers["Content-Type"]  = "application/json";
+            response.headers["Connection"]    = "close";
+        }
         catch (const std::exception& e) {
             Log::error(requestId, std::format("Unhandled exception: {}", e.what()));
             response.code   = "500";
@@ -184,12 +190,15 @@ void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& run
 
         socket.send(HTTPResponseToRawString(response));
 
-        if (!keepAlive) break;
+        if (!keepAlive || ++requestCount >= maxRequestsPerConnection) break;
     }
 }
 
-std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket)
+std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket,
+                                                     std::chrono::seconds headerTimeout)
 {
+    const auto deadline = std::chrono::steady_clock::now() + headerTimeout;
+
     std::string buffer;
     std::string leftover;
     constexpr int    bufferSize    = 1024;
@@ -197,6 +206,9 @@ std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket)
     char temp[bufferSize];
 
     while (true) {
+        if (std::chrono::steady_clock::now() > deadline)
+            throw RequestTimeoutException("Header read timed out");
+
         auto bytes = socket.recv(temp, sizeof(temp));
         buffer.append(temp, static_cast<size_t>(bytes));
 

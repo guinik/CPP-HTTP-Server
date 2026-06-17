@@ -395,6 +395,14 @@ protected:
                     return;
                 }
 
+                // Mirror the production 10 MB cap.
+                std::error_code szEc;
+                auto sz = fs::file_size(requested, szEc);
+                if (szEc || sz > 10ULL * 1024 * 1024) {
+                    res.code = "403"; res.reason = "Forbidden";
+                    return;
+                }
+
                 std::ifstream f(requested, std::ios::binary);
                 if (!f.is_open()) {
                     res.code = "404"; res.reason = "Not Found";
@@ -465,4 +473,98 @@ TEST_F(StaticFileTest, DotDotTraversalToNonExistentPathReturns404) {
     t.join();
 
     EXPECT_EQ(resp.find("HTTP/1.1 200"), std::string::npos);
+}
+
+TEST_F(StaticFileTest, FileLargerThan10MBReturns403) {
+    namespace fs = std::filesystem;
+
+    fs::path bigFile = tmpRoot / "public" / "big.bin";
+    {
+        std::ofstream f(bigFile, std::ios::binary);
+        // Write exactly 10 MB + 1 byte — just over the limit.
+        constexpr size_t kOver = 10ULL * 1024 * 1024 + 1;
+        const std::string chunk(4096, '\0');
+        for (size_t written = 0; written < kOver; ) {
+            size_t n = (std::min)(chunk.size(), kOver - written);
+            f.write(chunk.data(), static_cast<std::streamsize>(n));
+            written += n;
+        }
+    }
+
+    auto [srv, cli] = makeConnection();
+    auto t = startWorker(srv);
+
+    sendAll(cli, "GET /files/big.bin HTTP/1.1\r\nConnection: close\r\n\r\n");
+    auto resp = readOneResponse(cli);
+    rawClose(cli);
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 403"), std::string::npos);
+}
+
+// ── per-connection request limit ──────────────────────────────────────────────
+
+TEST_F(ConnectionTest, PerConnectionLimitClosesAfterMaxRequests) {
+    constexpr size_t kLimit = 5;
+    auto [srv, cli] = makeConnection();
+
+    // Use a short limit so the test runs in milliseconds.
+    auto t = std::thread([this, srv]() {
+        HandleConnection(SocketGuard(srv), router, running,
+                         kLimit, std::chrono::seconds(10));
+    });
+
+    // All kLimit requests must succeed on the same keep-alive connection.
+    for (size_t i = 0; i < kLimit; ++i) {
+        sendAll(cli, "GET /ok HTTP/1.1\r\n\r\n");
+        auto resp = readOneResponse(cli);
+        ASSERT_NE(resp.find("HTTP/1.1 200"), std::string::npos)
+            << "request " << i << " failed";
+    }
+
+    // The server closes the connection after the limit; the next recv must
+    // return 0 (EOF) or an error — never another 200.
+    sendAll(cli, "GET /ok HTTP/1.1\r\n\r\n");
+    char buf[1];
+    int n = ::recv(cli, buf, 1, 0);
+    EXPECT_LE(n, 0) << "server should have closed the connection";
+
+    rawClose(cli);
+    t.join();
+}
+
+// ── Slowloris / header-read timeout ──────────────────────────────────────────
+
+TEST_F(ConnectionTest, SlowlorisTimeoutReturns408) {
+    auto [srv, cli] = makeConnection();
+
+    // Worker with a 2 s header deadline so the test completes quickly.
+    auto t = std::thread([this, srv]() {
+        HandleConnection(SocketGuard(srv), router, running,
+                         1000, std::chrono::seconds(2));
+    });
+
+    // Send a valid but incomplete header (no terminating \r\n\r\n).
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\n");
+
+    // Trickle one byte every 200 ms so individual recv() calls don't time
+    // out (SO_RCVTIMEO = 1 s), but the wall-clock deadline still fires.
+    std::atomic_bool stopTrickle{false};
+    auto trickler = std::thread([cli, &stopTrickle]() {
+        char byte = 'X';
+        while (!stopTrickle) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            if (::send(cli, &byte, 1, 0) <= 0) break;
+        }
+    });
+
+    // Blocks until the server sends the 408 and closes (~2 s).
+    auto resp = readOneResponse(cli);
+
+    stopTrickle = true;
+    rawClose(cli);
+    trickler.join();
+    t.join();
+
+    EXPECT_NE(resp.find("HTTP/1.1 408"), std::string::npos);
 }
