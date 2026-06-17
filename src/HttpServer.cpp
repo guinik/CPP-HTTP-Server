@@ -1,4 +1,4 @@
-#include "WSA.hpp"
+#include "HttpServer.hpp"
 #include "Logger.hpp"
 #include <cstring>
 #include <format>
@@ -18,12 +18,12 @@ void HttpServer::run() {
 
 	// Need to cleann addr info on result
 	SocketGuard SafeListenSocket = SocketGuard();
-	SafeListenSocket.createSocket(info->ai_family, info->ai_socktype, info->ai_protocol);
-	SafeListenSocket.bindSocket(info->ai_addr, static_cast<int>(info->ai_addrlen));
-	SafeListenSocket.listenSocket();
+	SafeListenSocket.create(info->ai_family, info->ai_socktype, info->ai_protocol);
+	SafeListenSocket.bind(info->ai_addr, static_cast<int>(info->ai_addrlen));
+	SafeListenSocket.listen();
 	Log::info(std::format("Server listening on port {}...", _PORT));
 	while (_running) {
-		SocketGuard client = SafeListenSocket.acceptSocket();
+		SocketGuard client = SafeListenSocket.accept();
 		if(client.isValid())
 		{
 			if (_activeConnections.load(std::memory_order_relaxed) >= kMaxConnections) {

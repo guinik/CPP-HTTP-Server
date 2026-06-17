@@ -65,14 +65,14 @@ public:
 	SocketGuard(const SocketGuard&) = delete;
 	SocketGuard& operator=(const SocketGuard&) = delete;
 
-	void createSocket(int addrFamily, int addrType, int addrProtocol);
-	void bindSocket(const sockaddr* addrName, int addrLength);
-	void listenSocket();
+	void create(int addrFamily, int addrType, int addrProtocol);
+	void bind(const sockaddr* addrName, int addrLength);
+	void listen();
 	void setTimeout(size_t seconds);
 	bool isValid();
-	SocketGuard acceptSocket();
-	void sendData(const std::string& data);
-	int recvData(char* buffer, int size);
+	SocketGuard accept();
+	void send(const std::string& data);
+	int recv(char* buffer, int size);
 
 private:
 	SocketHandle _socket;

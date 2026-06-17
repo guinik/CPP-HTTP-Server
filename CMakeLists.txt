@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(SERVER_SOURCES
-    src/WSA.cpp
+    src/HttpServer.cpp
     src/SocketGuard.cpp
     src/HandleConnection.cpp
     src/HTTPRequest.cpp
@@ -18,7 +18,7 @@ set(SERVER_SOURCES
 )
 
 set(SERVER_HEADERS
-    include/WSA.hpp
+    include/HttpServer.hpp
     include/SocketGuard.hpp
     include/AddrInfo.hpp
     include/HandleConnection.hpp

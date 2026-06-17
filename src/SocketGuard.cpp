@@ -11,14 +11,14 @@
     #define SOCK_ERROR -1
 #endif
 
-void SocketGuard::sendData(const std::string& data) {
+void SocketGuard::send(const std::string& data) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot send on invalid socket");
 	}
 
 	size_t totalSent{ 0 };
 	while (totalSent < data.size()) {
-		int result = send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
+		int result = ::send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
 
 		if (result == SOCK_ERROR) {
 			int err = SOCKET_ERRNO;
@@ -34,7 +34,7 @@ void SocketGuard::sendData(const std::string& data) {
 	}
 }
 
-void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
+void SocketGuard::create(int addrFamily, int addrType, int addrProtocol) {
 	if (_socket != INVALID_HANDLE) {
 		SOCK_CLOSE(_socket);
 	}
@@ -46,20 +46,20 @@ void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
 	setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
 }
 
-void SocketGuard::bindSocket(const sockaddr* addrName, int addrLength) {
+void SocketGuard::bind(const sockaddr* addrName, int addrLength) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot bind an invalid socket");
 	}
-	if (bind(_socket, addrName, addrLength) == SOCK_ERROR) {
+	if (::bind(_socket, addrName, addrLength) == SOCK_ERROR) {
 		throw std::runtime_error(std::format("Bind failed: {}", SOCKET_ERRNO));
 	}
 }
 
-void SocketGuard::listenSocket() {
+void SocketGuard::listen() {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot listen on an invalid socket");
 	}
-	if (listen(_socket, SOMAXCONN) == SOCK_ERROR) {
+	if (::listen(_socket, SOMAXCONN) == SOCK_ERROR) {
 		throw std::runtime_error(std::format("Listen failed: {}", SOCKET_ERRNO));
 	}
 }
@@ -80,7 +80,7 @@ void SocketGuard::setTimeout(size_t seconds) {
 #endif
 }
 
-SocketGuard SocketGuard::acceptSocket() {
+SocketGuard SocketGuard::accept() {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot accept on an invalid socket");
 	}
@@ -98,19 +98,19 @@ SocketGuard SocketGuard::acceptSocket() {
 	if (ready == 0) return SocketGuard(INVALID_HANDLE);
 	if (ready == SOCK_ERROR) throw std::runtime_error("select() failed");
 
-	SocketHandle clientSocket = accept(_socket, NULL, NULL);
+	SocketHandle clientSocket = ::accept(_socket, NULL, NULL);
 	if (clientSocket == INVALID_HANDLE) {
 		throw std::runtime_error(std::format("Accept failed: {}", SOCKET_ERRNO));
 	}
 	return SocketGuard(clientSocket);
 }
 
-int SocketGuard::recvData(char* buffer, int size) {
+int SocketGuard::recv(char* buffer, int size) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot recv on invalid socket");
 	}
 
-	int bytes = recv(_socket, buffer, size, 0);
+	int bytes = ::recv(_socket, buffer, size, 0);
 
 	if (bytes == SOCK_ERROR) {
 		int err = SOCKET_ERRNO;

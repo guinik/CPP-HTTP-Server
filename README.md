@@ -39,7 +39,7 @@ HandleConnection()  [runs on thread pool]
         └── RouteTrie::match() → node (populates req.head.params + queryParams)
         └── method lookup → 404 / 405 / applyRoute()
         └── applyRoute() → middleware chain → handler → HTTPResponse
-        └── HTTPResponseToRawString() → sendData()
+        └── HTTPResponseToRawString() → send()
         └── break if Connection: close
 ```
 
@@ -49,7 +49,7 @@ HandleConnection()  [runs on thread pool]
 include/
   AddrInfo.hpp       - RAII wrapper for getaddrinfo result
   SocketGuard.hpp    - RAII wrapper for socket handle (cross-platform)
-  WSA.hpp            - HttpServer class + WinSocketGuard (Windows-only guard)
+  HttpServer.hpp     - HttpServer class + WinSocketGuard (Windows-only guard)
   HTTPRequest.hpp    - HTTPRequest / HTTPHead / HTTPBody structs + parser declarations
   HTTPResponse.hpp   - HTTPResponse struct
   Router.hpp         - RouteTrie, RouteTrieNode, Route, MiddleWare, Handler types
@@ -61,7 +61,7 @@ include/
 
 src/
   main.cpp              - entry point, port config, signal handler
-  WSA.cpp               - listen loop, thread pool dispatch
+  HttpServer.cpp        - listen loop, thread pool dispatch
   HandleConnection.cpp  - connection lifecycle, keep-alive loop, response serializer
   HTTPRequest.cpp       - raw bytes → HTTPRequest (head, body, query params)
   Router.cpp            - RouteTrie::add(), match(), dfsFindMatch(), applyRoute()

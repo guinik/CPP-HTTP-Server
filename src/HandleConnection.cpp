@@ -103,7 +103,7 @@ void HandleConnection(SocketGuard socket, RouteTrie& router, std::atomic_bool& r
 		}
 
 		std::string rawResponse = HTTPResponseToRawString(response);
-		socket.sendData(rawResponse);
+		socket.send(rawResponse);
 
 		if (!keepAlive)
 		{
@@ -123,7 +123,7 @@ std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket) {
 
 	constexpr size_t maxHeaderSize = 8 * 1024;
 	while (true) {
-		auto bytes = socket.recvData(temp, sizeof(temp));
+		auto bytes = socket.recv(temp, sizeof(temp));
 
 		if (bytes <= 0) {
 			break;
@@ -165,7 +165,7 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 		if (buffer.size() >= bodySize) {
 			break;
 		}
-		auto bytes = socket.recvData(temp, sizeof(temp));
+		auto bytes = socket.recv(temp, sizeof(temp));
 
 		if (bytes <= 0) {
 			break;
