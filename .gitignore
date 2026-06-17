@@ -1,5 +1,5 @@
 .ipynb_checkpoints/*
-
-
 *.ipynb
 build/*
+nginx/server.crt
+nginx/server.key

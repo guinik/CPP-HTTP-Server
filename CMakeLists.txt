@@ -37,7 +37,9 @@ add_library(http_server_lib STATIC ${SERVER_SOURCES} ${SERVER_HEADERS})
 
 target_include_directories(http_server_lib PUBLIC include)
 
-target_link_libraries(http_server_lib ws2_32)
+if(WIN32)
+    target_link_libraries(http_server_lib ws2_32)
+endif()
 
 
 

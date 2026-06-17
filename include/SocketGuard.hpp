@@ -1,50 +1,71 @@
 #pragma once
-#include<winsock2.h>
-#include <ws2tcpip.h>
-#include <format>
 #include <stdexcept>
+#include <format>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    using SocketHandle = SOCKET;
+    constexpr SocketHandle INVALID_HANDLE = INVALID_SOCKET;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <unistd.h>
+    #include <cerrno>
+    using SocketHandle = int;
+    constexpr SocketHandle INVALID_HANDLE = -1;
+#endif
 
 class SocketBaseError : public std::runtime_error {
 public:
-	explicit SocketBaseError(const std::string& msg) : std::runtime_error(msg) {
-	}
+	explicit SocketBaseError(const std::string& msg) : std::runtime_error(msg) {}
 };
 
 class SocketDisconnectException : public SocketBaseError {
 public:
-	explicit SocketDisconnectException(const std::string& msg) : SocketBaseError(msg) {
-	}
+	explicit SocketDisconnectException(const std::string& msg) : SocketBaseError(msg) {}
 };
+
 class SocketGuard {
 public:
-	SocketGuard(SOCKET socket) : _socket(socket) {};
-	SocketGuard() : _socket(INVALID_SOCKET) {};
+	SocketGuard(SocketHandle socket) : _socket(socket) {};
+	SocketGuard() : _socket(INVALID_HANDLE) {};
 
 	~SocketGuard() {
-		if (_socket != INVALID_SOCKET) {
+		if (_socket != INVALID_HANDLE) {
+#ifdef _WIN32
 			closesocket(_socket);
+#else
+			close(_socket);
+#endif
 		}
 	}
 
 	SocketGuard(SocketGuard&& other) noexcept {
 		_socket = other._socket;
-		other._socket = INVALID_SOCKET;
+		other._socket = INVALID_HANDLE;
 	}
 	SocketGuard& operator=(SocketGuard&& other) noexcept {
 		if (this != &other) {
-			if (_socket != INVALID_SOCKET) {
+			if (_socket != INVALID_HANDLE) {
+#ifdef _WIN32
 				closesocket(_socket);
+#else
+				close(_socket);
+#endif
 			}
 			_socket = other._socket;
-			other._socket = INVALID_SOCKET;
-			return *this;
+			other._socket = INVALID_HANDLE;
 		}
 		return *this;
 	}
 
-	SocketGuard(const SocketGuard& other) = delete;
+	SocketGuard(const SocketGuard&) = delete;
 	SocketGuard& operator=(const SocketGuard&) = delete;
-	void createSocket(int addresFamily, int adressType, int adressProtocol);
+
+	void createSocket(int addrFamily, int addrType, int addrProtocol);
 	void bindSocket(const sockaddr* addrName, int addrLength);
 	void listenSocket();
 	void setTimeout(size_t seconds);
@@ -53,7 +74,6 @@ public:
 	void sendData(const std::string& data);
 	int recvData(char* buffer, int size);
 
-
 private:
-	SOCKET _socket;
+	SocketHandle _socket;
 };

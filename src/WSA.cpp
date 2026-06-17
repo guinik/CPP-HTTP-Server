@@ -1,11 +1,12 @@
 #include "WSA.hpp"
 #include <iostream>
 #include <thread>
+#include <cstring>
 
 
 void WSAHandler::run() {
 	struct addrinfo hints;
-	ZeroMemory(&hints, sizeof(hints));
+	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
