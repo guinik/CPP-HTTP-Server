@@ -8,8 +8,9 @@
 #include "IRouter.hpp"
 
 void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& running,
-                      size_t              maxRequestsPerConnection = 1000,
-                      std::chrono::seconds headerReadTimeout        = std::chrono::seconds(10));
+                      size_t               maxRequestsPerConnection = 1000,
+                      std::chrono::seconds headerReadTimeout        = std::chrono::seconds(10),
+                      std::chrono::seconds handlerTimeout           = std::chrono::seconds(30));
 
 [[nodiscard]] std::pair<std::string, std::string> ReadRequestHead(
     SocketGuard& socket,

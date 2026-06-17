@@ -153,7 +153,7 @@ TEST_F(ConnectionTest, SimpleGetReturns200) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -166,7 +166,7 @@ TEST_F(ConnectionTest, UnknownPathReturns404) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /nonexistent HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /nonexistent HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -178,7 +178,7 @@ TEST_F(ConnectionTest, WrongMethodReturns405) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "POST /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "POST /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -190,7 +190,7 @@ TEST_F(ConnectionTest, HandlerThrowingReturns500) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /throws HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /throws HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -207,6 +207,7 @@ TEST_F(ConnectionTest, PostBodyIsReceivedCorrectly) {
     std::string body = "hello body";
     std::string req  = std::format(
         "POST /echo HTTP/1.1\r\n"
+        "Host: localhost\r\n"
         "Content-Length: {}\r\n"
         "Connection: close\r\n"
         "\r\n{}",
@@ -228,7 +229,7 @@ TEST_F(ConnectionTest, NegativeContentLengthReturns400) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "POST /echo HTTP/1.1\r\nContent-Length: -1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "POST /echo HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -241,7 +242,7 @@ TEST_F(ConnectionTest, OversizedContentLengthReturns413) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "POST /echo HTTP/1.1\r\nContent-Length: 99999999999\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "POST /echo HTTP/1.1\r\nHost: localhost\r\nContent-Length: 99999999999\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -256,12 +257,12 @@ TEST_F(ConnectionTest, HTTP11DefaultsToKeepAlive) {
     auto t = startWorker(srv);
 
     // First request — no Connection header; HTTP/1.1 default is keep-alive.
-    sendAll(cli, "GET /ok HTTP/1.1\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\n\r\n");
     auto resp1 = readOneResponse(cli);
     EXPECT_NE(resp1.find("Connection: keep-alive"), std::string::npos);
 
     // Socket still open — second request must succeed on the same connection.
-    sendAll(cli, "GET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp2 = readOneResponse(cli);
     EXPECT_NE(resp2.find("HTTP/1.1 200"), std::string::npos);
 
@@ -286,7 +287,7 @@ TEST_F(ConnectionTest, ConnectionCloseRespected) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -300,13 +301,13 @@ TEST_F(ConnectionTest, ConnectionKeepAliveIsCaseInsensitive) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /ok HTTP/1.1\r\nConnection: Keep-Alive\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: Keep-Alive\r\n\r\n");
     auto resp1 = readOneResponse(cli);
     EXPECT_NE(resp1.find("Connection: keep-alive"), std::string::npos);
 
     // If the old bug were present the server would have closed the connection
     // after resp1; this second request would fail or return garbage.
-    sendAll(cli, "GET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp2 = readOneResponse(cli);
     EXPECT_NE(resp2.find("HTTP/1.1 200"), std::string::npos);
 
@@ -333,7 +334,7 @@ TEST_F(ConnectionTest, UriTooLongReturns414) {
     auto t = startWorker(srv);
 
     // 2049-char path — just over the 2048-byte limit.
-    std::string req = "GET /" + std::string(2048, 'a') + " HTTP/1.1\r\nConnection: close\r\n\r\n";
+    std::string req = "GET /" + std::string(2048, 'a') + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
     sendAll(cli, req);
     auto resp = readOneResponse(cli);
     rawClose(cli);
@@ -347,7 +348,7 @@ TEST_F(ConnectionTest, MethodWithInvalidCharReturns400) {
     auto t = startWorker(srv);
 
     // Tab inside a method token is not a valid tchar → 400.
-    sendAll(cli, "G\tET /ok HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "G\tET /ok HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -424,7 +425,7 @@ TEST_F(StaticFileTest, LegitimateFileIsServed) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /files/hello.txt HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /files/hello.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -437,7 +438,7 @@ TEST_F(StaticFileTest, NonExistentFileReturns404) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /files/missing.txt HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /files/missing.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -452,7 +453,7 @@ TEST_F(StaticFileTest, DotDotTraversalToExistingFileReturns403) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /files/../secret.txt HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /files/../secret.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -467,7 +468,7 @@ TEST_F(StaticFileTest, DotDotTraversalToNonExistentPathReturns404) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /files/../../nonexistent_file HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /files/../../nonexistent_file HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -494,7 +495,7 @@ TEST_F(StaticFileTest, FileLargerThan10MBReturns403) {
     auto [srv, cli] = makeConnection();
     auto t = startWorker(srv);
 
-    sendAll(cli, "GET /files/big.bin HTTP/1.1\r\nConnection: close\r\n\r\n");
+    sendAll(cli, "GET /files/big.bin HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
     auto resp = readOneResponse(cli);
     rawClose(cli);
     t.join();
@@ -516,7 +517,7 @@ TEST_F(ConnectionTest, PerConnectionLimitClosesAfterMaxRequests) {
 
     // All kLimit requests must succeed on the same keep-alive connection.
     for (size_t i = 0; i < kLimit; ++i) {
-        sendAll(cli, "GET /ok HTTP/1.1\r\n\r\n");
+        sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\n\r\n");
         auto resp = readOneResponse(cli);
         ASSERT_NE(resp.find("HTTP/1.1 200"), std::string::npos)
             << "request " << i << " failed";
@@ -524,7 +525,7 @@ TEST_F(ConnectionTest, PerConnectionLimitClosesAfterMaxRequests) {
 
     // The server closes the connection after the limit; the next recv must
     // return 0 (EOF) or an error — never another 200.
-    sendAll(cli, "GET /ok HTTP/1.1\r\n\r\n");
+    sendAll(cli, "GET /ok HTTP/1.1\r\nHost: localhost\r\n\r\n");
     char buf[1];
     int n = ::recv(cli, buf, 1, 0);
     EXPECT_LE(n, 0) << "server should have closed the connection";

@@ -2,6 +2,7 @@
 #include "Logger.hpp"
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <format>
 
 static std::atomic<uint64_t> s_requestCounter{0};
@@ -50,8 +51,72 @@ static std::string jsonError(const std::string& msg)
     return R"({"error":")" + safe + R"("})";
 }
 
+static std::string ReadRequestBodyChunked(SocketGuard& socket, std::string& leftover)
+{
+    constexpr int    kRecvSize = 1024;
+    constexpr size_t kMaxBody  = 10ULL * 1024 * 1024;
+
+    char temp[kRecvSize];
+    std::string buf  = std::move(leftover);
+    std::string body;
+
+    auto fillUntilCRLF = [&]() {
+        while (buf.find("\r\n") == std::string::npos) {
+            auto n = socket.recv(temp, kRecvSize);
+            buf.append(temp, static_cast<size_t>(n));
+        }
+    };
+
+    auto fillUntil = [&](size_t needed) {
+        while (buf.size() < needed) {
+            auto n = socket.recv(temp, kRecvSize);
+            buf.append(temp, static_cast<size_t>(n));
+        }
+    };
+
+    while (true) {
+        fillUntilCRLF();
+        auto crlfPos = buf.find("\r\n");
+
+        std::string_view sizeField{buf.data(), crlfPos};
+        auto extPos = sizeField.find(';');
+        if (extPos != std::string_view::npos)
+            sizeField = sizeField.substr(0, extPos);
+        while (!sizeField.empty() && (sizeField.back() == ' ' || sizeField.back() == '\t'))
+            sizeField.remove_suffix(1);
+
+        size_t chunkSize = 0;
+        auto [ptr, ec] = std::from_chars(sizeField.data(),
+                                         sizeField.data() + sizeField.size(),
+                                         chunkSize, 16);
+        if (ec != std::errc{} || ptr != sizeField.data() + sizeField.size())
+            throw BadRequestException("Malformed chunked encoding: invalid chunk size");
+
+        buf.erase(0, crlfPos + 2);  // consume size line
+
+        if (chunkSize == 0) {
+            // Terminal chunk; drain trailers until empty line.
+            fillUntilCRLF();
+            auto termPos = buf.find("\r\n");
+            buf.erase(0, termPos + 2);
+            break;
+        }
+
+        if (chunkSize > kMaxBody - body.size())
+            throw PayloadTooLargeException("Chunked body exceeds 10 MB limit");
+
+        fillUntil(chunkSize + 2);
+        body.append(buf, 0, chunkSize);
+        buf.erase(0, chunkSize + 2);  // consume data + trailing CRLF
+    }
+
+    leftover = std::move(buf);
+    return body;
+}
+
 void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& running,
-                      size_t maxRequestsPerConnection, std::chrono::seconds headerReadTimeout)
+                      size_t maxRequestsPerConnection, std::chrono::seconds headerReadTimeout,
+                      std::chrono::seconds handlerTimeout)
 {
     socket.setTimeout(1);
 
@@ -68,27 +133,47 @@ void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& run
             auto [requestBytes, leftover] = ReadRequestHead(socket, headerReadTimeout);
 
             HTTPHead head = parseRawBytesHeadRequest(requestBytes);
-            size_t bodyBytes{ 0 };
-            if (head.headers.count("Content-Length") != 0)
-            {
-                const std::string& clStr = head.headers["Content-Length"];
-                if (!clStr.empty() && clStr[0] == '-')
-                    throw BadRequestException("Negative Content-Length");
-                try
-                {
-                    unsigned long long parsed = std::stoull(clStr);
-                    if (parsed > 10ULL * 1024 * 1024)
-                        throw PayloadTooLargeException("Body too large");
-                    bodyBytes = static_cast<size_t>(parsed);
-                }
-                catch (const BadRequestException&)    { throw; }
-                catch (const PayloadTooLargeException&) { throw; }
-                catch (std::exception& e) {
-                    throw BadRequestException(std::format("Invalid Content-Length: {}", e.what()));
-                }
+
+            // RFC 7230 §5.4 — HTTP/1.1 requests MUST include a Host header.
+            if (head.version == "HTTP/1.1") {
+                auto hostIt = head.headers.find("Host");
+                if (hostIt == head.headers.end() || hostIt->second.empty())
+                    throw BadRequestException("HTTP/1.1 request must include a Host header");
             }
 
-            std::string requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
+            // RFC 7230 §3.3.3 — Transfer-Encoding takes precedence over Content-Length.
+            std::string requestBodyBytes;
+            auto teIt = head.headers.find("Transfer-Encoding");
+            if (teIt != head.headers.end()) {
+                std::string te = teIt->second;
+                std::transform(te.begin(), te.end(), te.begin(),
+                    [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+                if (te.find("chunked") != std::string::npos)
+                    requestBodyBytes = ReadRequestBodyChunked(socket, leftover);
+                else
+                    throw BadRequestException(
+                        std::format("Unsupported Transfer-Encoding: {}", teIt->second));
+            } else {
+                size_t bodyBytes = 0;
+                if (head.headers.count("Content-Length") != 0) {
+                    const std::string& clStr = head.headers["Content-Length"];
+                    if (!clStr.empty() && clStr[0] == '-')
+                        throw BadRequestException("Negative Content-Length");
+                    try {
+                        unsigned long long parsed = std::stoull(clStr);
+                        if (parsed > 10ULL * 1024 * 1024)
+                            throw PayloadTooLargeException("Body too large");
+                        bodyBytes = static_cast<size_t>(parsed);
+                    }
+                    catch (const BadRequestException&)     { throw; }
+                    catch (const PayloadTooLargeException&) { throw; }
+                    catch (std::exception& e) {
+                        throw BadRequestException(
+                            std::format("Invalid Content-Length: {}", e.what()));
+                    }
+                }
+                requestBodyBytes = ReadRequestBody(socket, bodyBytes, leftover);
+            }
 
             auto it = head.headers.find("Content-Type");
             std::string contentType = it != head.headers.end() ? it->second : "";
@@ -101,7 +186,16 @@ void HandleConnection(SocketGuard socket, IRouter& router, std::atomic_bool& run
 
             if (match.route)
             {
+                const auto handlerStart = std::chrono::steady_clock::now();
                 match.route->composedChain(request, response);
+                const auto elapsed = std::chrono::steady_clock::now() - handlerStart;
+                if (elapsed > handlerTimeout) {
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+                    Log::warn(requestId,
+                        std::format("Handler took {}ms (limit {}s); closing connection",
+                                    ms, handlerTimeout.count()));
+                    keepAlive = false;
+                }
             }
             else if (match.pathFound)
             {

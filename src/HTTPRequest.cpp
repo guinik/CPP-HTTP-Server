@@ -3,9 +3,7 @@
 #include "StringUtils.hpp"
 #include <format>
 #include <stdexcept>
-#include <vector>
 
-// RFC 9110 §5.6.2 — characters that are NOT allowed in a method token.
 static bool isInvalidMethodChar(unsigned char c)
 {
     if (c < 0x21 || c == 0x7F) return true;  // control chars, space, DEL
@@ -20,85 +18,85 @@ static bool isInvalidMethodChar(unsigned char c)
     }
 }
 
-HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
-    auto pos = rawRequest.find("\r\n");
+HTTPHead parseRawBytesHeadRequest(std::string_view raw)
+{
+    auto lfPos = raw.find("\r\n");
+    if (lfPos == std::string_view::npos)
+        throw BadRequestException("Malformed request line: missing CRLF");
 
-    std::string firstLine = rawRequest.substr(0, pos);
-    std::vector<std::string> firstLineVector = splitByDelimiter(firstLine, " ");
+    std::string_view firstLine = raw.substr(0, lfPos);
 
-    if (firstLineVector.size() != 3) {
+    auto sp1 = firstLine.find(' ');
+    if (sp1 == std::string_view::npos)
         throw BadRequestException("Malformed request line");
-    }
+    std::string_view method = firstLine.substr(0, sp1);
 
-    const std::string& method  = firstLineVector[0];
-    const std::string& path    = firstLineVector[1];
-    const std::string& version = firstLineVector[2];
+    auto sp2 = firstLine.find(' ', sp1 + 1);
+    if (sp2 == std::string_view::npos)
+        throw BadRequestException("Malformed request line");
+    std::string_view path    = firstLine.substr(sp1 + 1, sp2 - sp1 - 1);
+    std::string_view version = firstLine.substr(sp2 + 1);
 
-    // Validate method: non-empty token with no delimiter or control chars.
-    if (method.empty())
-        throw BadRequestException("Empty method");
+    if (method.empty() || path.empty() || version.empty())
+        throw BadRequestException("Malformed request line");
+
     for (unsigned char c : method) {
         if (isInvalidMethodChar(c))
             throw BadRequestException(
                 std::format("Invalid character in method: 0x{:02x}", static_cast<unsigned>(c)));
     }
 
-    // Validate URL length before any further processing.
     if (path.size() > 2048)
         throw RequestUriTooLongException("Request-URI exceeds 2048 bytes");
 
-    // Accept only HTTP/1.0 and HTTP/1.1; anything else gets 505.
     if (version != "HTTP/1.0" && version != "HTTP/1.1")
         throw HttpVersionNotSupportedException(
             std::format("Unsupported HTTP version: {}", version));
 
-    size_t lastPos = pos + 2;
-    size_t newPos;
     CaseInsensitiveMap headerMap;
+    size_t pos = lfPos + 2;
 
-    while ((newPos = rawRequest.find("\r\n", lastPos)) != std::string::npos) {
+    while (pos < raw.size()) {
+        auto nextCRLF = raw.find("\r\n", pos);
+        if (nextCRLF == std::string_view::npos) break;
 
-        auto newLine = rawRequest.substr(lastPos, newPos - lastPos);
-        if (newLine.empty()) {
-            lastPos = lastPos + 2;
-            break;
-        }
+        std::string_view line = raw.substr(pos, nextCRLF - pos);
+        if (line.empty()) break;
 
-        size_t colonPosition = newLine.find(":");
-        if (colonPosition == std::string::npos) {
+        auto colon = line.find(':');
+        if (colon == std::string_view::npos)
             throw BadRequestException("Malformed header: missing colon");
-        }
-        std::string key = newLine.substr(0, colonPosition);
-        std::string value = newLine.substr(colonPosition + 1, newLine.length() - (colonPosition + 1));
-        size_t start = value.find_first_not_of(" \t");
-        if (start != std::string::npos) {
-            size_t end = value.find_last_not_of(" \t");
-            value = value.substr(start, end - start + 1);
-        } else {
-            value = "";
-        }
 
-        headerMap[key] = value;
-        lastPos = newPos + 2;
+        std::string_view key   = line.substr(0, colon);
+        std::string_view value = line.substr(colon + 1);
+
+        auto start = value.find_first_not_of(" \t");
+        value = (start != std::string_view::npos)
+                    ? value.substr(start, value.find_last_not_of(" \t") - start + 1)
+                    : std::string_view{};
+
+        // Only std::string copies happen here, at the point of storage.
+        headerMap[std::string(key)] = std::string(value);
+        pos = nextCRLF + 2;
     }
 
     return HTTPHead{
-         .method = method,
-         .path = path,
-         .version = version,
-         .requestId = {},
-         .headers = headerMap,
-         .params = {},
-         .queryParams = {},
+        .method      = std::string(method),
+        .path        = std::string(path),
+        .version     = std::string(version),
+        .requestId   = {},
+        .headers     = std::move(headerMap),
+        .params      = {},
+        .queryParams = {},
     };
-};
+}
 
 HTTPBody parseRawBytesBodyRequest(const std::string& rawBody, const std::string& contentType) {
     return HTTPBody{
-            .raw = rawBody,
-            .contentType = contentType
+        .raw         = rawBody,
+        .contentType = contentType
     };
-};
+}
 
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body)
 {
@@ -106,4 +104,4 @@ HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body)
         .head = head,
         .body = body
     };
-};
+}

@@ -46,7 +46,7 @@ struct HTTPRequest {
 	HTTPBody body;
 };
 
-HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest);
+HTTPHead parseRawBytesHeadRequest(std::string_view rawRequest);
 HTTPBody parseRawBytesBodyRequest(const std::string& rawRequest, const std::string& contentType);
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body);
 
