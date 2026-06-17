@@ -71,6 +71,7 @@ add_executable(unit_tests
     tests/test_middleware.cpp
     tests/test_threadpool.cpp
     tests/test_serializer.cpp
+    tests/test_connection.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE http_server_lib GTest::gtest_main)

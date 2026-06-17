@@ -36,10 +36,16 @@ void HandleConnection(SocketGuard socket, RadixTree& router, std::atomic_bool& r
 			HTTPHead head = parseRawBytesHeadRequest(requestBytes);
 			size_t bodyBytes{ 0 };
 			if (head.headers.count("Content-Length") != 0)
-			{	
+			{
 				try
 				{
-					bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
+					int parsed = std::stoi(head.headers["Content-Length"].c_str());
+					if (parsed < 0)
+						throw BadRequestException("Negative Content-Length");
+					bodyBytes = static_cast<size_t>(parsed);
+				}
+				catch (const BadRequestException&) {
+					throw;
 				}
 				catch (std::exception& e) {
 					throw std::runtime_error(std::format("Parsing content-length failed: {}", e.what()));
