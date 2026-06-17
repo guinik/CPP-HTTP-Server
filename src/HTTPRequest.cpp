@@ -86,7 +86,10 @@ HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
          .method = method,
          .path = path,
          .version = version,
+         .requestId = {},
          .headers = headerMap,
+         .params = {},
+         .queryParams = {},
     };
 };
 

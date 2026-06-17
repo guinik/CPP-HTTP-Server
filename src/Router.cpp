@@ -243,12 +243,12 @@ RouteMatch RouteTrie::match(HTTPRequest& requestWithBody) {
 			auto it = resultNodePtrDfs->routeMap.find(requestWithBody.head.method);
 			if (it != resultNodePtrDfs->routeMap.end())
 			{
-				return { &it->second, true };
+				return { .route = &it->second, .pathFound = true, .allowedMethods = {} };
 			}
 			std::vector<std::string> allowed;
 			for (const auto& [method, _] : resultNodePtrDfs->routeMap)
 				allowed.push_back(method);
-			return { nullptr, true, std::move(allowed) };
+			return { .route = nullptr, .pathFound = true, .allowedMethods = std::move(allowed) };
 		}
 
 	}
