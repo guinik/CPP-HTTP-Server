@@ -1,4 +1,5 @@
 #include "Router.hpp"
+#include "Utils.hpp"
 #include <optional>
 #include <memory>
 #include "HTTPRequest.hpp"

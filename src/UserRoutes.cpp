@@ -19,7 +19,6 @@ void addUserRoutes(RadixTree& router)
 {
     router.add("/users", "GET", { requestLogger, parseJson, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "200";
-        response.version = "HTTP/1.1";
         response.reason = "All good";
         response.headers["Content-Type"] = "application/json";
         std::string page = req.head.queryParams.count("page") ? req.head.queryParams.at("page") : "not set";
@@ -37,7 +36,6 @@ void addUserRoutes(RadixTree& router)
 
 
     router.add("/users/:id", "GET", { requestLogger, userCorsMiddleWare }, [](const HTTPRequest& req, HTTPResponse& response) -> void {
-        response.version = "HTTP/1.1";
         response.code = "200";
         response.reason = "OK";
         response.body = "user id issss: " + req.head.params.at("id");
@@ -51,7 +49,6 @@ void addUserRoutes(RadixTree& router)
 
             auto [rootEnd, _] = std::mismatch(publicRoot.begin(), publicRoot.end(), requestedPath.begin());
             if (rootEnd != publicRoot.end()) {
-                response.version = "HTTP/1.1";
                 response.code = "403";
                 response.reason = "Forbidden";
                 return;
@@ -60,7 +57,6 @@ void addUserRoutes(RadixTree& router)
             std::ifstream file(requestedPath);
 
             if (!file.is_open()) {
-                response.version = "HTTP/1.1";
                 response.code = "404";
                 response.reason = "Not Found";
                 response.body = "File not found: " + requestedPath.string();
@@ -77,7 +73,6 @@ void addUserRoutes(RadixTree& router)
             else if (pathStr.ends_with(".js"))   contentType = "application/javascript";
             else if (pathStr.ends_with(".json")) contentType = "application/json";
 
-            response.version = "HTTP/1.1";
             response.code = "200";
             response.reason = "OK";
             response.headers["Content-Type"] = contentType;
@@ -87,6 +82,5 @@ void addUserRoutes(RadixTree& router)
     router.add("/users", "OPTIONS", { requestLogger, userCorsMiddleWare}, [](const HTTPRequest& req, HTTPResponse& response) -> void {
         response.code = "204";
         response.reason = "No Content";
-        response.version = "HTTP/1.1";
         });
 };

@@ -49,4 +49,3 @@ HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest);
 HTTPBody parseRawBytesBodyRequest(const std::string& rawRequest, const std::string& contentType);
 HTTPRequest constructRequest(const HTTPHead& head, const HTTPBody& body);
 
-std::vector<std::string> splitByDelimiter(const std::string& string, const std::string& delimiter);

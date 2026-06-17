@@ -63,7 +63,7 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 					bodyBytes = std::stoi(head.headers["Content-Length"].c_str());
 				}
 				catch (std::exception& e) {
-					throw std::runtime_error(std::format("Parsin content-legnth failed : {}", e.what()));
+					throw std::runtime_error(std::format("Parsing content-length failed: {}", e.what()));
 				}
 			}
 
@@ -97,7 +97,6 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 				else
 				{
 					response.code = "405";
-					response.version = "HTTP/1.1";
 					response.reason = "Method Not Allowed";
 				}
 
@@ -106,7 +105,6 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 			else
 			{
 				response.code = "404";
-				response.version = "HTTP/1.1";
 				response.reason = "Path not found";
 			
 			}
@@ -144,6 +142,7 @@ std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket) {
 	char temp[bufferSize];
 
 
+	constexpr size_t maxHeaderSize = 8 * 1024;
 	while (true) {
 		auto bytes = socket.recvData(temp, sizeof(temp));
 
@@ -151,13 +150,16 @@ std::pair<std::string, std::string> ReadRequestHead(SocketGuard& socket) {
 			break;
 		}
 
-		buffer.append(temp, bytes);
+		buffer.append(temp, static_cast<size_t>(bytes));
+
+		if (buffer.size() > maxHeaderSize) {
+			throw std::runtime_error("Request headers too large");
+		}
+
 		auto pos = buffer.find("\r\n\r\n");
 		if (pos != std::string::npos) {
-			//http request header done
 			leftover = buffer.substr(pos + 4);
 			buffer = buffer.substr(0, pos + 4);
-
 			break;
 		}
 	}
@@ -190,7 +192,7 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 			break;
 		}
 
-		buffer.append(temp, bytes);
+		buffer.append(temp, static_cast<size_t>(bytes));
 
 	}
 	buffer.resize(bodySize);

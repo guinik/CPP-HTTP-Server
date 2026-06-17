@@ -30,7 +30,7 @@ void SocketGuard::sendData(const std::string& data) {
 			throw std::runtime_error(std::format("Send failed: {}", err));
 		}
 
-		totalSent += result;
+		totalSent += static_cast<size_t>(result);
 	}
 }
 
@@ -42,6 +42,8 @@ void SocketGuard::createSocket(int addrFamily, int addrType, int addrProtocol) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error(std::format("Invalid Listen Socket: {}", SOCKET_ERRNO));
 	}
+	int opt = 1;
+	setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
 }
 
 void SocketGuard::bindSocket(const sockaddr* addrName, int addrLength) {
