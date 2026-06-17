@@ -6,7 +6,7 @@ A lightweight HTTP/1.1 server built from scratch in C++20. No frameworks, no dep
 
 - **Trie router** - O(path depth) matching with named parameters (`:id`), wildcard segments (`*`), and DFS backtracking for correct specificity
 - **HTTP/1.1 keep-alive** - persistent connections reused across multiple requests; respects `Connection: close` and HTTP/1.0 defaults
-- **Thread pool** - fixed-size pool sized to `hardware_concurrency()`; no unbounded thread spawning
+- **Thread pool** - fixed-size pool sized to `hardware_concurrency()`; bounded task queue (default 4096) rejects excess connections with a 503 rather than growing without limit; `enqueue` throws on shutdown so the accept loop can't leak counters
 - **Middleware pipeline** - per-route chain with `Next` continuation; short-circuit by not calling `next()`; handler runs inside the chain so middleware captures accurate timing and response codes
 - **Static file serving** - wildcard routes serve files from disk with MIME type detection and path traversal protection
 - **CORS** - configurable origins, methods, and headers; handles `OPTIONS` preflight automatically
@@ -14,8 +14,9 @@ A lightweight HTTP/1.1 server built from scratch in C++20. No frameworks, no dep
 - **Query parameter parsing** - `?key=value` pairs URL-decoded into `req.head.queryParams`
 - **Case-insensitive headers** - header lookup follows RFC 7230; `Content-Type` and `content-type` are the same key
 - **Request logging** - built-in middleware logs method, path, status, and latency
-- **Graceful shutdown** - CTRL-C sets a stop flag; accept loop drains and exits cleanly
+- **Graceful shutdown** - CTRL-C sets a stop flag; accept loop drains and exits cleanly; `activeConnections` is decremented via a try/finally guard so the drain counter is always accurate even when a handler throws
 - **RAII everywhere** - `SocketGuard`, `AddrInfoGuard`, and `WinSocketGuard` ensure clean resource cleanup on every code path
+- **Prometheus metrics** - `GET /metrics/prometheus` serves the standard text exposition format (counters, gauge, and a request-latency histogram with 11 fixed buckets) — scrapable by Prometheus, Grafana Agent, or any OpenMetrics-compatible collector; `GET /metrics` continues to serve the JSON snapshot
 - **Cross-platform** - runs on Windows (Winsock2) and Linux (POSIX sockets); same codebase, `#ifdef` at the socket layer only
 - **Docker + Nginx** - ships with a `Dockerfile`, `docker-compose.yml`, and nginx config for containerized HTTPS deployment
 
@@ -57,22 +58,28 @@ include/
   Cors.hpp           - makeCors() middleware factory
   Utils.hpp          - parseJson + requestLogger middleware
   UserRoutes.hpp     - addUserRoutes() declaration
+  Metrics.hpp        - atomic counters + latency histogram; JSON and Prometheus snapshots
+  ServerConfig.hpp   - all server tunables with defaults; overridable via env vars
   json.hpp           - nlohmann/json (single-header, vendored)
 
 src/
-  main.cpp              - entry point, port config, signal handler
-  HttpServer.cpp        - listen loop, thread pool dispatch
-  HandleConnection.cpp  - connection lifecycle, keep-alive loop, response serializer
+  main.cpp              - entry point, port/env config, signal handler
+  HttpServer.cpp        - listen loop, thread pool dispatch, connection drain on shutdown
+  HandleConnection.cpp  - connection lifecycle, keep-alive loop, per-request latency recording
   HTTPRequest.cpp       - raw bytes → HTTPRequest (head, body, query params)
   Router.cpp            - RouteTrie::add(), match(), dfsFindMatch(), applyRoute()
-  UserRoutes.cpp        - user-defined route handlers
-  ThreadPool.cpp        - fixed-size thread pool
+  UserRoutes.cpp        - user-defined route handlers + /metrics/prometheus endpoint
+  ThreadPool.cpp        - fixed-size pool with bounded queue
   SocketGuard.cpp       - send, recv, bind, listen, accept wrappers
 
 tests/
-  test_parser.cpp     - unit tests for HTTP request parsing and splitByDelimiter
-  test_router.cpp     - unit tests for URL decoding, radix tree matching, and applyRoute
-  test_middleware.cpp - unit tests for CORS and parseJson middleware
+  test_parser.cpp      - unit tests for HTTP request parsing and splitByDelimiter
+  test_router.cpp      - unit tests for URL decoding, trie matching, and applyRoute
+  test_middleware.cpp  - unit tests for CORS and parseJson middleware
+  test_threadpool.cpp  - concurrency, exception safety, bounded queue, enqueue-after-stop
+  test_serializer.cpp  - response serialization and CRLF injection prevention
+  test_connection.cpp  - integration tests over real TCP loopback sockets (keep-alive,
+                         chunked TE, Slowloris, static files, path traversal)
 
 nginx/
   nginx.conf          - reverse proxy config (HTTPS termination → HTTP to app)
@@ -117,11 +124,22 @@ nginx/server.key
 ```bash
 ./build/Debug/http_server          # default port 2700
 ./build/Debug/http_server 8080     # custom port
-# Creating server with: 8 threads.
-# Server listening on port 8080...
 ```
 
-Press CTRL-C to shut down gracefully.
+Press CTRL-C to shut down gracefully. The accept loop stops, waits up to `shutdownTimeout` seconds for in-flight connections to finish, then exits.
+
+### Environment variables
+
+All tunables can be overridden at startup without recompiling:
+
+| Variable | Default | Description |
+|---|---|---|
+| `HTTP_PORT` | `2700` | TCP port to bind |
+| `HTTP_BIND` | `0.0.0.0` | Bind address |
+| `HTTP_THREADS` | `hardware_concurrency` | Worker thread count |
+| `HTTP_MAX_CONN` | `1000` | Max simultaneous connections |
+| `HTTP_QUEUE_DEPTH` | `4096` | Max pending tasks in the thread pool queue; excess connections are rejected with 503 |
+| `HTTP_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error` |
 
 ## Testing
 
@@ -136,8 +154,12 @@ ctest --test-dir build --output-on-failure
 | Suite | What it tests |
 |---|---|
 | `SplitByDelimiter`, `ParseHead`, `ParseBody` | HTTP request parser — raw bytes to struct |
-| `StringDecode`, `Router`, `ApplyRoute` | URL decoding, radix tree matching, middleware chain |
+| `StringDecode`, `Router`, `ApplyRoute` | URL decoding, trie matching, middleware chain |
 | `Cors`, `ParseJsonMiddleware` | CORS origin validation and JSON body parsing |
+| `ThreadPool` | Concurrency, exception safety, bounded queue rejection, enqueue-after-stop |
+| `Serializer` | Response format, `Content-Length`, CRLF injection prevention |
+| `ConnectionTest` | Full round-trips over real TCP loopback: keep-alive cycling, HTTP/1.0, chunked TE, Slowloris timeout, per-connection request limit, pipelining |
+| `StaticFileTest` | File serving, 404, path traversal rejection, oversized file rejection |
 
 CI runs on every pull request via GitHub Actions on both **Windows** and **Ubuntu**.
 
@@ -240,6 +262,37 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+
+## Observability
+
+### Endpoints
+
+| Endpoint | Format | Description |
+|---|---|---|
+| `GET /health` | JSON | `{"status":"ok"}` — liveness check |
+| `GET /metrics` | JSON | Snapshot of all counters |
+| `GET /metrics/prometheus` | Prometheus text | Scrapable by Prometheus / Grafana Agent |
+
+### Prometheus scrape config
+
+```yaml
+scrape_configs:
+  - job_name: cpp_http_server
+    static_configs:
+      - targets: ["localhost:2700"]
+    metrics_path: /metrics/prometheus
+```
+
+### Exposed metrics
+
+| Name | Type | Description |
+|---|---|---|
+| `http_requests_total` | counter | All requests received |
+| `http_responses_total{status="2xx\|4xx\|5xx"}` | counter | Responses by status class |
+| `http_active_connections` | gauge | Connections currently being handled |
+| `http_request_duration_ms` | histogram | End-to-end request latency in ms; buckets: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, +Inf |
+
+Logs are structured JSON emitted to stdout (`info`, `warn`) and stderr (`error`), one object per line.
 
 ## Known Limitations
 
