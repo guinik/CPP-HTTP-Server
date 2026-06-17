@@ -1,7 +1,7 @@
 #include "WSA.hpp"
-#include <iostream>
-#include <thread>
+#include "Logger.hpp"
 #include <cstring>
+#include <format>
 
 
 void WSAHandler::run() {
@@ -21,19 +21,25 @@ void WSAHandler::run() {
 	SafeListenSocket.createSocket(info->ai_family, info->ai_socktype, info->ai_protocol);
 	SafeListenSocket.bindSocket(info->ai_addr, static_cast<int>(info->ai_addrlen));
 	SafeListenSocket.listenSocket();
-	printf("Server listening on port %s...\n", _PORT.c_str());
+	Log::info(std::format("Server listening on port {}...", _PORT));
 	while (_running) {
 		SocketGuard client = SafeListenSocket.acceptSocket();
 		if(client.isValid())
 		{
-			// CLIENT has reached the port TCP connection ready lets pass it to detached void
+			if (_activeConnections.load(std::memory_order_relaxed) >= kMaxConnections) {
+				// SocketGuard destructor closes the socket → client gets a RST.
+				// The OS SYN backlog then provides natural back-pressure.
+				continue;
+			}
+			++_activeConnections;
 			_threadPool.enqueue(
-				[c = std::make_shared<SocketGuard>(std::move(client)), this]() mutable {
-					HandleConnection(std::move(*c), _router);
+				[c = std::move(client), this]() mutable {
+					HandleConnection(std::move(c), _router, _running);
+					--_activeConnections;
 				}
 			);
 		}
 	}
-	std::cout << "Closed server." << std::endl;
+	Log::info("Closed server.");
 
 }

@@ -1,25 +1,8 @@
 #pragma once
-#include <string>
-#include <vector>
-
-inline std::vector<std::string> splitByDelimiter(const std::string& string, const std::string& delimiter)
-{
-	size_t posStart = 0;
-	size_t posEnd;
-	std::vector<std::string> result;
-	while ((posEnd = string.find(delimiter, posStart)) != std::string::npos) {
-		result.push_back(string.substr(posStart, posEnd - posStart));
-		posStart = posEnd + delimiter.length();
-	}
-	result.push_back(string.substr(posStart));
-	return result;
-}
-
-#include "Router.hpp"
-#include "json.hpp"
-#include <iostream>
 #include <chrono>
-using json = nlohmann::json;
+#include <format>
+#include "Router.hpp"
+#include "Logger.hpp"
 
 inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
@@ -35,11 +18,11 @@ inline MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next)
 		return;
 	};
 	try {
-		req.body.json = json::parse(req.body.raw);
+		req.body.json = nlohmann::json::parse(req.body.raw);
 		next();
 		return;
 	}
-	catch (json::parse_error& e ){
+	catch (nlohmann::json::parse_error& e ){
 		res.code = "400";
 		res.reason = "Invalid Json";
 	}
@@ -55,7 +38,5 @@ inline MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next n
 	auto end = std::chrono::steady_clock::now();
 	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-	std::cout << req.head.method << " " << req.head.path
-		<< " " << res.code
-		<< " " << ms << "ms\n";
-	};
+	Log::info(std::format("{} {} {} {}ms", req.head.method, req.head.path, res.code, ms));
+};

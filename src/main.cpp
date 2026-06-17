@@ -2,9 +2,10 @@
 #include "Router.hpp"
 #include "UserRoutes.hpp"
 #include "ThreadPool.hpp"
+#include "Logger.hpp"
 #include <thread>
 #include <string>
-#include <iostream>
+#include <format>
 #include <csignal>
 
 static std::atomic_bool g_running{ true };
@@ -29,13 +30,13 @@ int main(int argc, char* argv[]) {
 
         ThreadPool threadPool(std::thread::hardware_concurrency());
 
-        std::cout << "Creating server with : " << std::thread::hardware_concurrency() << " threads. \n";
+        Log::info(std::format("Creating server with: {} threads.", std::thread::hardware_concurrency()));
 
         WSAHandler server(port, router, threadPool, g_running);
         server.run();   // all logic inside
     }
     catch (const std::exception& e) {
-        std::cout << "Fatal error: " << e.what() << std::endl;
+        Log::error(std::format("Fatal error: {}", e.what()));
         return 1;
     }
 

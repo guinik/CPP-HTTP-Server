@@ -45,7 +45,19 @@ void addUserRoutes(RadixTree& router)
             namespace fs = std::filesystem;
 
             const fs::path publicRoot = fs::canonical(fs::current_path() / "public");
-            fs::path requestedPath = fs::weakly_canonical(publicRoot / req.head.params.at("*"));
+
+            // canonical() throws if the path does not exist, eliminating the
+            // TOCTOU window that weakly_canonical() leaves for non-existent
+            // paths (lexical normalisation without a disk check).
+            fs::path requestedPath;
+            try {
+                requestedPath = fs::canonical(publicRoot / req.head.params.at("*"));
+            } catch (const fs::filesystem_error&) {
+                response.code = "404";
+                response.reason = "Not Found";
+                response.body = "File not found";
+                return;
+            }
 
             auto [rootEnd, _] = std::mismatch(publicRoot.begin(), publicRoot.end(), requestedPath.begin());
             if (rootEnd != publicRoot.end()) {
@@ -59,7 +71,7 @@ void addUserRoutes(RadixTree& router)
             if (!file.is_open()) {
                 response.code = "404";
                 response.reason = "Not Found";
-                response.body = "File not found: " + requestedPath.string();
+                response.body = "File not found";
                 return;
             }
 

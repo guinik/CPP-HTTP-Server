@@ -25,6 +25,15 @@ TEST(StringDecode, Mixed) {
     EXPECT_EQ(stringDecode("foo%3Dbar+baz"), "foo=bar baz");
 }
 
+TEST(StringDecode, InvalidPercentEncodingThrows) {
+    EXPECT_THROW(stringDecode("bad%GGvalue"), BadRequestException);
+}
+
+TEST(StringDecode, TruncatedPercentSequencePassesThrough) {
+    // % at end of string — not enough chars for a sequence, treated as literal
+    EXPECT_EQ(stringDecode("a%"), "a%");
+}
+
 // ── RadixTree::match ──────────────────────────────────────────────────────────
 
 static HTTPRequest makeRequest(const std::string& method, const std::string& path) {
@@ -40,10 +49,10 @@ TEST(Router, LiteralMatch) {
     tree.add("/users", "GET", {}, [&hit](const HTTPRequest&, HTTPResponse&) { hit = true; });
 
     auto req = makeRequest("GET", "/users");
-    auto* node = tree.match(req);
+    auto [route, pathFound] = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_TRUE(node->routeMap.count("GET"));
+    EXPECT_NE(route, nullptr);
+    EXPECT_TRUE(pathFound);
 }
 
 TEST(Router, NamedParamMatch) {
@@ -51,9 +60,9 @@ TEST(Router, NamedParamMatch) {
     tree.add("/users/:id", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/users/42");
-    auto* node = tree.match(req);
+    auto [route, pathFound] = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
+    EXPECT_NE(route, nullptr);
     EXPECT_EQ(req.head.params.at("id"), "42");
 }
 
@@ -62,9 +71,9 @@ TEST(Router, WildcardMatch) {
     tree.add("/public/*", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/public/assets/style.css");
-    auto* node = tree.match(req);
+    auto [route, pathFound] = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
+    EXPECT_NE(route, nullptr);
     EXPECT_EQ(req.head.params.at("*"), "assets/style.css");
 }
 
@@ -76,12 +85,24 @@ TEST(Router, LiteralBeatsParam) {
     tree.add("/users/:id", "GET", {}, [&hitParam]  (const HTTPRequest&, HTTPResponse&) { hitParam   = true; });
 
     auto req = makeRequest("GET", "/users/me");
-    auto* node = tree.match(req);
+    auto [route, pathFound] = tree.match(req);
 
-    ASSERT_NE(node, nullptr);
-    EXPECT_TRUE(node->routeMap.count("GET"));
-    // literal node has no paramName
-    EXPECT_TRUE(node->paramName.empty());
+    ASSERT_NE(route, nullptr);
+    HTTPResponse res;
+    route->handler(req, res);
+    EXPECT_TRUE(hitLiteral);
+    EXPECT_FALSE(hitParam);
+}
+
+TEST(Router, MethodNotAllowedReturnsPathFoundFlag) {
+    RadixTree tree;
+    tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
+
+    auto req = makeRequest("POST", "/users");
+    auto [route, pathFound] = tree.match(req);
+
+    EXPECT_EQ(route, nullptr);
+    EXPECT_TRUE(pathFound);
 }
 
 TEST(Router, QueryParamsParsed) {
@@ -105,12 +126,15 @@ TEST(Router, QueryParamsUrlDecoded) {
     EXPECT_EQ(req.head.queryParams.at("q"), "hello world");
 }
 
-TEST(Router, NoMatchReturnsNullptr) {
+TEST(Router, NoMatchReturnsNullRoute) {
     RadixTree tree;
     tree.add("/users", "GET", {}, [](const HTTPRequest&, HTTPResponse&) {});
 
     auto req = makeRequest("GET", "/nonexistent");
-    EXPECT_EQ(tree.match(req), nullptr);
+    auto [route, pathFound] = tree.match(req);
+
+    EXPECT_EQ(route, nullptr);
+    EXPECT_FALSE(pathFound);
 }
 
 // ── applyRoute ────────────────────────────────────────────────────────────────

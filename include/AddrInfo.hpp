@@ -23,6 +23,11 @@ public:
 
     addrinfo* get() const { return _ptr; }
 
+    AddrInfoGuard(const AddrInfoGuard&) = delete;
+    AddrInfoGuard& operator=(const AddrInfoGuard&) = delete;
+    AddrInfoGuard(AddrInfoGuard&&) = delete;
+    AddrInfoGuard& operator=(AddrInfoGuard&&) = delete;
+
 private:
     addrinfo* _ptr = nullptr;
 };

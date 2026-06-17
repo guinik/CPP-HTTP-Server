@@ -1,31 +1,6 @@
 #include "HandleConnection.hpp"
-#include <iostream>
-
-void PrintRequest(const HTTPRequest& requestWBody) {
-	auto req = requestWBody.head;
-	std::cout << "=== HTTP REQUEST ===\n";
-	std::cout << req.method << " " << req.path << " " << req.version << "\n\n";
-
-	std::cout << "--- HEADERS ---\n";
-	for (const auto& [key, value] : req.headers) {
-		std::cout << key << ": " << value << "\n";
-	}
-
-	std::cout << "--- PARAM HEADERS ---\n";
-	for (const auto& [key, value] : req.params) {
-		std::cout << key << ": " << value << "\n";
-	}
-
-	std::cout << "--- QUERY PARAMS ---\n";
-	for (const auto& [key, value] : req.queryParams) {
-		std::cout << key << ": " << value << "\n";
-	}
-
-	std::cout << "\n--- BODY ---\n";
-	std::cout << requestWBody.body.raw << "\n";
-
-	std::cout << "====================\n";
-}
+#include "Logger.hpp"
+#include <format>
 
 bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
 {
@@ -33,7 +8,10 @@ bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
 	auto it = request.head.headers.find("Connection");
 	if (it != request.head.headers.end())
 	{
-		keepAlive = (it->second == "keep-alive");
+		std::string connVal = it->second;
+		std::transform(connVal.begin(), connVal.end(), connVal.begin(),
+			[](unsigned char c) { return std::tolower(c); });
+		keepAlive = (connVal == "keep-alive");
 	}
 
 	response.headers["Connection"] = keepAlive ? "keep-alive" : "close";
@@ -42,11 +20,12 @@ bool keepAliveMechanism(const HTTPRequest& request, HTTPResponse& response)
 
 };
 
-void HandleConnection(SocketGuard socket, RadixTree& router) {
-	size_t timeoutSeconds{ 5 };
-	socket.setTimeout(timeoutSeconds);
+void HandleConnection(SocketGuard socket, RadixTree& router, std::atomic_bool& running) {
+	// 1 s recv timeout: a blocked recv wakes within 1 s so the loop condition
+	// can re-evaluate _running after a shutdown signal.
+	socket.setTimeout(1);
 
-	while (socket.isValid())
+	while (socket.isValid() && running)
 	{
 		HTTPResponse response;
 		bool keepAlive = false;
@@ -82,45 +61,39 @@ void HandleConnection(SocketGuard socket, RadixTree& router) {
 
 			HTTPRequest request = constructRequest(head, body);
 
-			RadixTreeNode* routePointer = router.match(request);
-			//PrintRequest(request);
+			auto [route, pathFound] = router.match(request);
 
-
-			if(routePointer)
+			if (route)
 			{
-				auto it = routePointer->routeMap.find(request.head.method);
-
-				if (it != routePointer->routeMap.end())
-				{
-					applyRoute(it->second.middleware, request, response, it->second.handler);
-				}
-				else
-				{
-					response.code = "405";
-					response.reason = "Method Not Allowed";
-				}
-
-			
+				applyRoute(route->middleware, request, response, route->handler);
+			}
+			else if (pathFound)
+			{
+				response.code = "405";
+				response.reason = "Method Not Allowed";
 			}
 			else
 			{
 				response.code = "404";
 				response.reason = "Path not found";
-			
 			}
 			keepAlive = keepAliveMechanism(request, response);
 
 		}
 		catch (const SocketDisconnectException& e)
 		{
-			std::cerr << "Connection finished: " << e.what() << "\n";
+			Log::info(std::format("Connection finished: {}", e.what()));
 			return;
 		}
+		catch (const BadRequestException& e) {
+			Log::error(std::format("Bad request: {}", e.what()));
+			response.code = "400";
+			response.reason = "Bad Request";
+		}
 		catch (const std::exception& e) {
-			std::cerr << "Connection error: " << e.what() << "\n";
+			Log::error(std::format("Connection error: {}", e.what()));
 			response.code = "500";
 			response.reason = "Server Error";
-
 		}
 
 		std::string rawResponse = HTTPResponseToRawString(response);
@@ -199,36 +172,3 @@ std::string ReadRequestBody(SocketGuard& socket, size_t bodySize, std::string& l
 	return buffer;
 }
 
-void addTimeHeader(HTTPResponse& response)
-{
-	auto now = std::chrono::system_clock::now();
-	auto time = std::chrono::system_clock::to_time_t(now);
-	std::tm tm{};
-#ifdef _WIN32
-	gmtime_s(&tm, &time);
-#else
-	gmtime_r(&time, &tm);
-#endif
-	char buf[64];
-	std::strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S GMT", &tm);
-	response.headers["Date"] = buf;
-}
-
-std::string HTTPResponseToRawString(HTTPResponse& response) 
-{
-	addTimeHeader(response);
-	if (!response.body.empty()) {
-		response.headers["Content-Length"] = std::to_string(response.body.size());
-	}
-
-	std::string rawString = response.version + " " + response.code + " " + response.reason + "\r\n";
-	for(auto& [key,val] : response.headers)
-	{
-		rawString += key + ": " + val + "\r\n";
-	}
-	rawString += "\r\n";
-	rawString += response.body;
-
-
-	return rawString;
-};

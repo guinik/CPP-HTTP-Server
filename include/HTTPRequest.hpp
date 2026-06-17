@@ -1,24 +1,24 @@
 #pragma once
 #include <string>
 #include <unordered_map>
-#include "json.hpp"
 #include <algorithm>
-struct CaseInsensitiveHash 
+#include "json.hpp"
+struct CaseInsensitiveHash
 {
 	size_t operator()(const std::string& a) const{
 		std::string lower = a;
-		std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+		std::transform(lower.begin(), lower.end(), lower.begin(),
+			[](unsigned char c) { return std::tolower(c); });
 		return std::hash<std::string>{}(lower);
 	}
 };
 
-struct CaseInsensitiveEqual	 
+struct CaseInsensitiveEqual
 {
 	bool operator()(const std::string& a, const std::string& b) const {
 		return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-			[](char ca, char cb) {
+			[](unsigned char ca, unsigned char cb) {
 				return std::tolower(ca) == std::tolower(cb);
-
 			});
 	};
 };

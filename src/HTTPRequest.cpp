@@ -1,6 +1,7 @@
 #include "HTTPRequest.hpp"
-#include "Utils.hpp"
+#include "StringUtils.hpp"
 #include <stdexcept>
+#include <vector>
 
 HTTPHead parseRawBytesHeadRequest(const std::string& rawRequest) {
 	auto pos = rawRequest.find("\r\n");

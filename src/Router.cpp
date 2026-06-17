@@ -1,33 +1,44 @@
 #include "Router.hpp"
-#include "Utils.hpp"
+#include "StringUtils.hpp"
 #include <optional>
 #include <memory>
-#include "HTTPRequest.hpp"
+#include <vector>
+
+static constexpr DFSMode allModes[] = {
+	DFSMode::DIRECT,
+	DFSMode::PARAM,
+	DFSMode::WILDCARD
+};
+
+static bool isHexDigit(char c)
+{
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
 
 std::string stringDecode(std::string input)
 {
 	std::string result;
 	for(size_t i{}; i < input.size(); i++)
 	{
-		// if coded it will have he form %AA 
 		if (input[i] == '%' && i + 2 < input.size())
 		{
+			if (!isHexDigit(input[i + 1]) || !isHexDigit(input[i + 2]))
+				throw BadRequestException("Invalid percent-encoding in URL");
 			int hexValue = std::stoi(input.substr(i + 1, 2), nullptr, 16);
-			char characterValue = static_cast<char>(hexValue);
-			result += characterValue;
+			result += static_cast<char>(hexValue);
 			i += 2;
 		}
 		else if(input[i] == '+')
 		{
 			result += ' ';
 		}
-		else 
+		else
 		{
 			result += input[i];
 		}
-	}	
+	}
 	return result;
-};
+}
 
 
 void RadixTree::add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler)
@@ -192,10 +203,10 @@ std::pair<RadixTreeNode*, CaseInsensitiveMap> dfsFindMatch(RadixTreeNode* initia
 	
 };
 
-RadixTreeNode* RadixTree::match(HTTPRequest& requestWithBody) {
+RouteMatch RadixTree::match(HTTPRequest& requestWithBody) {
 	auto& requestHead = requestWithBody.head;
 	if (!methodsRoot) {
-		return nullptr;
+		return {};
 	};
 	RadixTreeNode* methodHeadPtr = methodsRoot.get();
 
@@ -203,7 +214,7 @@ RadixTreeNode* RadixTree::match(HTTPRequest& requestWithBody) {
 
 	if(pathAndQueryVector.size() > 1)
 	{
-		std::vector<std::string> extraParams = splitByDelimiter(pathAndQueryVector[1], "&"); // id=100, coudl have something like id=21%20a;
+		std::vector<std::string> extraParams = splitByDelimiter(pathAndQueryVector[1], "&");
 		for(auto& param : extraParams)
 		{
 			std::string decodedString = stringDecode(param);
@@ -226,12 +237,17 @@ RadixTreeNode* RadixTree::match(HTTPRequest& requestWithBody) {
 		if (resultNodePtrDfs)
 		{
 			mergeParams(requestWithBody, paramResult);
-			return resultNodePtrDfs;
+			auto it = resultNodePtrDfs->routeMap.find(requestWithBody.head.method);
+			if (it != resultNodePtrDfs->routeMap.end())
+			{
+				return { &it->second, true };
+			}
+			return { nullptr, true };
 		}
 
 	}
-	return nullptr;
-	
+	return {};
+
 };
 
 

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "HTTPRequest.hpp"
-
+#include "StringUtils.hpp"
 // ── splitByDelimiter ──────────────────────────────────────────────────────────
 
 TEST(SplitByDelimiter, BasicSlash) {
@@ -80,6 +80,41 @@ TEST(ParseHead, MalformedFirstLineThrows) {
     EXPECT_THROW(parseRawBytesHeadRequest(raw), std::runtime_error);
 }
 
+TEST(ParseHead, HeaderValueWithColonIsPreserved) {
+    // e.g. Date header — value itself contains colons
+    std::string raw =
+        "GET / HTTP/1.1\r\n"
+        "Date: Mon, 01 Jan 2024 12:00:00 GMT\r\n"
+        "\r\n";
+    auto head = parseRawBytesHeadRequest(raw);
+    EXPECT_EQ(head.headers.at("Date"), "Mon, 01 Jan 2024 12:00:00 GMT");
+}
+
+TEST(ParseHead, EmptyHeaderValueIsAccepted) {
+    std::string raw =
+        "GET / HTTP/1.1\r\n"
+        "X-Empty:\r\n"
+        "\r\n";
+    auto head = parseRawBytesHeadRequest(raw);
+    EXPECT_EQ(head.headers.at("X-Empty"), "");
+}
+
+TEST(ParseHead, MultipleHeadersAllParsed) {
+    std::string raw =
+        "POST /submit HTTP/1.1\r\n"
+        "Host: example.com\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 13\r\n"
+        "Authorization: Bearer tok\r\n"
+        "\r\n";
+    auto head = parseRawBytesHeadRequest(raw);
+    EXPECT_EQ(head.method, "POST");
+    EXPECT_EQ(head.headers.at("Host"),           "example.com");
+    EXPECT_EQ(head.headers.at("Content-Type"),   "application/json");
+    EXPECT_EQ(head.headers.at("Content-Length"), "13");
+    EXPECT_EQ(head.headers.at("Authorization"),  "Bearer tok");
+}
+
 // ── parseRawBytesBodyRequest ──────────────────────────────────────────────────
 
 TEST(ParseBody, StoresRawBodyAndContentType) {
@@ -92,4 +127,12 @@ TEST(ParseBody, StoresRawBodyAndContentType) {
 TEST(ParseBody, EmptyBody) {
     auto result = parseRawBytesBodyRequest("", "");
     EXPECT_TRUE(result.raw.empty());
+}
+
+TEST(ParseBody, BinaryBodyStoredVerbatim) {
+    std::string body = "raw\x00\x01\x02 data";
+    body[3] = '\0';  // embed a null byte
+    auto result = parseRawBytesBodyRequest(body, "application/octet-stream");
+    EXPECT_EQ(result.raw.size(), body.size());
+    EXPECT_EQ(result.raw, body);
 }

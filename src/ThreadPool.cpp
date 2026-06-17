@@ -1,14 +1,6 @@
 #include "ThreadPool.hpp"
-
-void ThreadPool::enqueue(std::function<void()> task)
-{
-	{
-		std::unique_lock<std::mutex> lock(queueMtx);
-		tasks.push(std::move(task));
-	}
-	cv.notify_one();
-}
-
+#include "Logger.hpp"
+#include <format>
 
 ThreadPool::ThreadPool(size_t numThreads) {
 
@@ -16,7 +8,7 @@ ThreadPool::ThreadPool(size_t numThreads) {
 		threads.emplace_back([this]() {
 
 			while (true) {
-				std::function<void()> task;
+				Task task;
 				{
 					std::unique_lock<std::mutex> lock(queueMtx);
 					cv.wait(lock, [this]() {
@@ -27,7 +19,13 @@ ThreadPool::ThreadPool(size_t numThreads) {
 					task = std::move(tasks.front());
 					tasks.pop();
 				}
-				task();
+				try {
+					task();
+				} catch (const std::exception& e) {
+					Log::error(std::format("[ThreadPool] task threw: {}", e.what()));
+				} catch (...) {
+					Log::error("[ThreadPool] task threw unknown exception");
+				}
 			}
 			}
 		);

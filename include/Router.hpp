@@ -1,9 +1,14 @@
 #pragma once
 #include <functional>
+#include <memory>
+#include <stdexcept>
 #include "HTTPRequest.hpp"
 #include "HTTPResponse.hpp"
-#include <optional>
-#include <memory>
+
+class BadRequestException : public std::runtime_error {
+public:
+	explicit BadRequestException(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 
 using Next = std::function<void()>;
@@ -25,11 +30,6 @@ enum class DFSMode
 	WILDCARD
 };
 
-constexpr DFSMode allModes[] = {
-	DFSMode::DIRECT,
-	DFSMode::PARAM,
-	DFSMode::WILDCARD
-};
 
 struct RadixTreeNode {
 	std::unordered_map<std::string, std::unique_ptr<RadixTreeNode>> children;
@@ -41,10 +41,15 @@ struct RadixTreeNode {
 };
 
 
+struct RouteMatch {
+	Route* route = nullptr;
+	bool pathFound = false;
+};
+
 class RadixTree {
 public:
 	void add(const std::string& path, const std::string& method, const std::vector<MiddleWare>& middleware, const Handler& handler);
-	RadixTreeNode* match(HTTPRequest& request);
+	RouteMatch match(HTTPRequest& request);
 
 private:
 	std::unique_ptr<RadixTreeNode> methodsRoot;

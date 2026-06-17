@@ -28,6 +28,8 @@ private:
 
 class WSAHandler {
 public:
+	static constexpr size_t kMaxConnections = 1000;
+
 	WSAHandler(const std::string& PORT, RadixTree& router, ThreadPool& threadPool, std::atomic_bool& running)
 		: _PORT(PORT), _router(router), _threadPool(threadPool), _running(running) {}
 	void run();
@@ -40,4 +42,5 @@ private:
 	RadixTree& _router;
 	ThreadPool& _threadPool;
 	std::atomic_bool& _running;
+	std::atomic<size_t> _activeConnections{ 0 };
 };
