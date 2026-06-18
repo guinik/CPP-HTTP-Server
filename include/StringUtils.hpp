@@ -28,9 +28,14 @@ inline std::string stringDecode(std::string input)
             if (!isHex(input[i + 1]) || !isHex(input[i + 2]))
                 throw BadRequestException("Invalid percent-encoding in URL");
             int hexValue;
-            std::from_chars(input.data() + i + 1, input.data() + i + 3, hexValue, 16);
-            result += static_cast<char>(hexValue);
-            i += 2;
+            auto [ptr, ec] = std::from_chars(input.data() + i + 1, input.data() + i + 3, hexValue, 16);
+            if (ec == std::errc()) {
+                result += static_cast<char>(hexValue);
+                i += 2;
+            }
+            else{
+                throw std::runtime_error("Couldnt decode the string");
+            }
         } else if (input[i] == '+') {
             result += ' ';
         } else {
