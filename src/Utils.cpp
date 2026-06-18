@@ -40,8 +40,14 @@ MiddleWare parseJson = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 
 MiddleWare requestLogger = [](HTTPRequest& req, HTTPResponse& res, Next next) {
 	auto start = std::chrono::steady_clock::now();
+	try{
+		next();
+	}
+	catch(const std::exception&)
+	{
+		throw;
+	}
 
-	next();
 
 	auto end = std::chrono::steady_clock::now();
 	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();

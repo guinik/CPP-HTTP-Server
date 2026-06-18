@@ -29,7 +29,7 @@ MiddleWare makeCors(CorsOptions corsOpt)
         }
         if (!allowed) {
             res.code = "403";
-            res.reason = "Unauthorized origin";
+            res.reason = "Forbidden";
             return;
         }
 
