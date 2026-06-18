@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "HTTPErrors.hpp"
+#include <charconv>
 
 inline std::vector<std::string> splitByDelimiter(const std::string& string, const std::string& delimiter)
 {
