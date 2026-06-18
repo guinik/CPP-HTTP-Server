@@ -213,6 +213,7 @@ void HandleConnection(SocketGuard socket, const IRouter& router, std::atomic_boo
 
             if (matchResult.route)
             {
+                // TODO : Real handler timings. Right now if a thread loops forever we would never get a warn. 
                 const auto handlerStart = std::chrono::steady_clock::now();
                 matchResult.route->composedChain(request, response);
                 const auto elapsed = std::chrono::steady_clock::now() - handlerStart;

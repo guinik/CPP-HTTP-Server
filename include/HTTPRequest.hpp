@@ -7,6 +7,7 @@
 struct CaseInsensitiveHash
 {
     size_t operator()(const std::string& a) const {
+        // we allocate a string per call, a per character hash with ^ might be reasonable to explore
         std::string lower = a;
         std::transform(lower.begin(), lower.end(), lower.begin(),
             [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

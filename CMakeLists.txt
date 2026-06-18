@@ -15,6 +15,8 @@ set(SERVER_SOURCES
     src/Router.cpp
     src/UserRoutes.cpp
     src/ThreadPool.cpp
+    src/Utils.cpp
+    src/Cors.cpp
 )
 
 set(SERVER_HEADERS
