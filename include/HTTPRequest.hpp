@@ -7,8 +7,8 @@
 struct CaseInsensitiveHash
 {
     size_t operator()(const std::string& a) const {
-        constexpr unsigned long long FNV_OFFSET_BASIS{ 14695981039346656037 };
-        constexpr unsigned long long FNV_PRIME{ 1099511628211 };
+        constexpr unsigned long long FNV_OFFSET_BASIS{ 14695981039346656037ULL };
+        constexpr unsigned long long FNV_PRIME{ 1099511628211ULL };
         size_t hash = FNV_OFFSET_BASIS;
         for (size_t i{}; i < a.size(); i++)
         {
