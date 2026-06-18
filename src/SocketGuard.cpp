@@ -11,14 +11,14 @@
     #define SOCK_ERROR -1
 #endif
 
-void SocketGuard::send(const std::string& data) {
+void SocketGuard::send(const std::string_view& data) {
 	if (_socket == INVALID_HANDLE) {
 		throw std::runtime_error("Cannot send on invalid socket");
 	}
 
 	size_t totalSent{ 0 };
 	while (totalSent < data.size()) {
-		int result = ::send(_socket, data.c_str() + totalSent, static_cast<int>(data.size() - totalSent), 0);
+		int result = ::send(_socket, data.data() + totalSent, static_cast<int>(data.size() - totalSent), 0);
 
 		if (result == SOCK_ERROR) {
 			int err = SOCKET_ERRNO;
@@ -43,7 +43,11 @@ void SocketGuard::create(int addrFamily, int addrType, int addrProtocol) {
 		throw std::runtime_error(std::format("Invalid Listen Socket: {}", SOCKET_ERRNO));
 	}
 	int opt = 1;
-	setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
+
+	if (setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt))) {
+		throw std::runtime_error(std::format("Set socket option failed: {}", SOCKET_ERRNO));
+	}
+	
 }
 
 void SocketGuard::bind(const sockaddr* addrName, int addrLength) {

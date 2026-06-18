@@ -7,10 +7,17 @@
 struct CaseInsensitiveHash
 {
     size_t operator()(const std::string& a) const {
-        std::string lower = a;
-        std::transform(lower.begin(), lower.end(), lower.begin(),
-            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return std::hash<std::string>{}(lower);
+        constexpr unsigned long long FNV_OFFSET_BASIS{ 14695981039346656037ULL };
+        constexpr unsigned long long FNV_PRIME{ 1099511628211ULL };
+        size_t hash = FNV_OFFSET_BASIS;
+        for (size_t i{}; i < a.size(); i++)
+        {
+            unsigned char charac = static_cast<unsigned char>(std::tolower(a[i]));
+            hash = hash ^ charac;
+            hash = hash * FNV_PRIME;
+        }
+
+        return hash;
     }
 };
 

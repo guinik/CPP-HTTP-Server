@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "HTTPErrors.hpp"
+#include <charconv>
 
 inline std::vector<std::string> splitByDelimiter(const std::string& string, const std::string& delimiter)
 {
@@ -26,9 +27,15 @@ inline std::string stringDecode(std::string input)
         if (input[i] == '%' && i + 2 < input.size()) {
             if (!isHex(input[i + 1]) || !isHex(input[i + 2]))
                 throw BadRequestException("Invalid percent-encoding in URL");
-            int hexValue = std::stoi(input.substr(i + 1, 2), nullptr, 16);
-            result += static_cast<char>(hexValue);
-            i += 2;
+            int hexValue;
+            auto [ptr, ec] = std::from_chars(input.data() + i + 1, input.data() + i + 3, hexValue, 16);
+            if (ec == std::errc()) {
+                result += static_cast<char>(hexValue);
+                i += 2;
+            }
+            else{
+                throw std::runtime_error("Couldnt decode the string");
+            }
         } else if (input[i] == '+') {
             result += ' ';
         } else {

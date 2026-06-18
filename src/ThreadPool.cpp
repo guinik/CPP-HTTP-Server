@@ -16,7 +16,10 @@ ThreadPool::ThreadPool(size_t numThreads, size_t maxQueueDepth_)
 						return !tasks.empty() || stop;
 						}
 					);
-					if (stop && tasks.empty()) return;
+					if (stop && tasks.empty()) 
+					{
+						return;
+					}
 					task = std::move(tasks.front());
 					tasks.pop();
 				}

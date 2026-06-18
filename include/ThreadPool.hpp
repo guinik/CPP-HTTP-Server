@@ -39,13 +39,14 @@ public:
 	// Throws std::runtime_error if the pool is stopping or the queue is full.
 	template <typename F>
 	void enqueue(F&& f) {
+		Task task(std::forward<F>(f));
 		{
 			std::unique_lock<std::mutex> lock(queueMtx);
 			if (stop)
 				throw std::runtime_error("ThreadPool is stopping");
 			if (tasks.size() >= maxQueueDepth)
 				throw std::runtime_error("ThreadPool queue full");
-			tasks.emplace(std::forward<F>(f));
+			tasks.emplace(std::move(task));
 		}
 		cv.notify_one();
 	}
